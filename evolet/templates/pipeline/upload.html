@@ -5,54 +5,68 @@
 <div class="space-y-8 slide-up" x-data="uploadHandler()">
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-3xl font-bold text-white">Upload Files</h1>
-            <p class="text-gray-400 mt-1">Upload PDF or text files for extraction</p>
+            <h1 class="text-3xl font-bold text-white brand-font">Upload Files</h1>
+            <p class="text-gray-400 mt-1">Upload PDF, JSON, or text files for extraction</p>
         </div>
     </div>
+
+    {% if error %}
+    <div class="glass rounded-2xl p-4 border border-red-400/30 bg-red-500/5">
+        <p class="text-red-300">{{ error }}</p>
+    </div>
+    {% endif %}
 
     <!-- Drag & Drop Zone -->
     <form method="post" enctype="multipart/form-data" action="{{ url('pipeline:upload') }}"
           hx-post="{{ url('pipeline:upload') }}" hx-target="#upload-result" hx-swap="innerHTML"
-          class="glass rounded-2xl p-8 border-2 border-dashed border-gray-700 hover:border-cyan-500/50 transition-all"
+          hx-encoding="multipart/form-data"
+          class="glass rounded-2xl p-8 border-2 border-dashed border-purple-300/20 hover:border-purple-400/40 transition-all"
           @dragover.prevent="dragging = true"
           @dragleave.prevent="dragging = false"
           @drop.prevent="handleDrop($event)"
-          :class="{ 'border-cyan-500 bg-cyan-500/5': dragging }">
+          :class="{ 'border-purple-400/50 bg-purple-500/5': dragging }">
         <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
         <div class="text-center py-8">
-            <div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-violet-600/20 to-purple-700/20 flex items-center justify-center">
-                <svg class="w-10 h-10 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center">
+                <svg class="w-10 h-10 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
                 </svg>
             </div>
 
-            <h3 class="text-xl font-semibold text-white mb-2">Drop files here</h3>
-            <p class="text-gray-400 mb-6">or click to browse — supports PDF and TXT files</p>
+            <h3 class="text-xl font-semibold text-white brand-font mb-2">Drop files here</h3>
+            <p class="text-gray-400 mb-2">or click to browse</p>
+            <p class="text-gray-500 text-sm mb-6">Supports PDF, JSON (_final.json records), and TXT files</p>
 
             <label for="file-upload-input"
-                   class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-600 to-violet-600 rounded-xl text-white font-medium cursor-pointer hover:from-cyan-500 hover:to-violet-500 transition-all shadow-lg shadow-cyan-500/20">
+                   class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl text-white font-medium cursor-pointer hover:from-purple-500 hover:to-blue-500 transition-all shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                 </svg>
                 Choose Files
             </label>
             <input type="file" name="files" id="file-upload-input" class="hidden" multiple
-                   accept=".pdf,.txt,.text" @change="handleFiles($event)">
+                   accept=".pdf,.txt,.text,.json" @change="handleFiles($event)">
         </div>
 
         <!-- Selected files preview -->
         <template x-if="files.length > 0">
-            <div class="mt-6 space-y-2 border-t border-gray-800 pt-6">
+            <div class="mt-6 space-y-2 border-t border-white/10 pt-6">
                 <h4 class="text-sm font-medium text-gray-400 mb-3" x-text="files.length + ' file(s) selected'"></h4>
                 <template x-for="(file, index) in files" :key="index">
-                    <div class="flex items-center gap-3 p-3 rounded-lg bg-gray-800/50">
-                        <svg class="w-5 h-5 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                        </svg>
-                        <span class="text-sm text-gray-300 flex-grow" x-text="file.name"></span>
+                    <div class="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
+                        <template x-if="file.name.endsWith('.pdf')">
+                            <span class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-300 text-xs font-bold">PDF</span>
+                        </template>
+                        <template x-if="file.name.endsWith('.json')">
+                            <span class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-300 text-xs font-bold">JSON</span>
+                        </template>
+                        <template x-if="file.name.endsWith('.txt') || file.name.endsWith('.text')">
+                            <span class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-300 text-xs font-bold">TXT</span>
+                        </template>
+                        <span class="text-sm text-gray-300 flex-grow truncate" x-text="file.name"></span>
                         <span class="text-xs text-gray-500" x-text="(file.size / 1024 / 1024).toFixed(2) + ' MB'"></span>
-                        <button type="button" @click="removeFile(index)" class="text-gray-500 hover:text-red-400">
+                        <button type="button" @click="removeFile(index)" class="text-gray-500 hover:text-red-400 transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
@@ -60,7 +74,7 @@
                     </div>
                 </template>
                 <button type="submit"
-                        class="w-full mt-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl text-white font-semibold hover:from-emerald-500 hover:to-teal-500 transition-all shadow-lg shadow-emerald-500/20">
+                        class="w-full mt-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl text-white font-semibold hover:from-purple-500 hover:to-blue-500 transition-all shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40">
                     Upload & Import
                 </button>
             </div>
@@ -82,8 +96,10 @@ function uploadHandler() {
         handleDrop(e) {
             this.dragging = false;
             const dt = e.dataTransfer;
-            if (dt.files) {
+            if (dt.files && dt.files.length) {
+                // Update Alpine state
                 this.files = Array.from(dt.files);
+                // Update the actual file input
                 const input = document.getElementById('file-upload-input');
                 input.files = dt.files;
             }
@@ -93,6 +109,7 @@ function uploadHandler() {
         },
         removeFile(index) {
             this.files.splice(index, 1);
+            // Can't easily update input.files, so we clear it and rely on the remaining display
         }
     };
 }

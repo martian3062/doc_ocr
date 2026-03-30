@@ -50,8 +50,10 @@ TEMPLATES = [
         "APP_DIRS": False,
         "OPTIONS": {
             "environment": "evolet.jinja2.environment",
-            "extensions": [
-                "jinja2.ext.loopcontrols",
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.template.context_processors.csrf",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
@@ -88,6 +90,9 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },

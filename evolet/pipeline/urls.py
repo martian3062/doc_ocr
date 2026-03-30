@@ -21,6 +21,7 @@ urlpatterns = [
     path("runs/", views.run_list, name="run_list"),
     path("runs/<uuid:run_id>/", views.run_detail, name="run_detail"),
     path("runs/start/", views.start_run, name="start_run"),
+    path("runs/start-one/", views.start_run_one, name="start_run_one"),
 
     # QC
     path("qc/", views.qc_summary, name="qc_summary"),

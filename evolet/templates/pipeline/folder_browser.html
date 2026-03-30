@@ -1,86 +1,97 @@
 {% extends "base.html" %}
-{% block title %}Folder Browser{% endblock %}
+{% block title %}Folders{% endblock %}
 
 {% block content %}
 <div class="space-y-6 slide-up">
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-3xl font-bold text-white">Folder Browser</h1>
-            <p class="text-gray-400 mt-1">Import PDFs from a server-side directory</p>
+            <h1 class="text-3xl font-bold text-white brand-font">Folder Browser</h1>
+            <p class="text-gray-400 mt-1">Import files directly from the server filesystem</p>
         </div>
     </div>
 
-    <!-- Folder Path Input -->
-    <div class="glass rounded-2xl p-6">
-        <form method="get" action="{{ url('pipeline:folder_browser') }}" class="flex gap-3">
-            <input type="text" name="path" value="{{ folder_path }}"
-                   class="flex-grow px-4 py-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:ring-2 focus:ring-cyan-500 focus:border-transparent font-mono text-sm"
-                   placeholder="/path/to/pdf/folder">
-            <button type="submit"
-                    class="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl text-white font-medium hover:from-cyan-500 hover:to-blue-500 transition-all">
+    <!-- Path Input -->
+    <div class="glass rounded-2xl p-6 glow-blue">
+        <form method="get" action="{{ url('pipeline:folder_browser') }}" class="flex gap-4">
+            <div class="flex-grow">
+                {{ form.folder_path }}
+            </div>
+            <button type="submit" class="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-medium transition-colors border border-white/5">
                 Browse
             </button>
         </form>
     </div>
 
     {% if error %}
-    <div class="glass rounded-2xl p-4 border border-red-500/30 bg-red-500/5">
-        <p class="text-red-400">{{ error }}</p>
+    <div class="glass rounded-2xl p-4 border border-red-400/30 bg-red-500/5">
+        <p class="text-red-300">{{ error }}</p>
     </div>
     {% endif %}
 
-    {% if files %}
-    <!-- Import All Button -->
-    <div class="flex items-center justify-between">
-        <p class="text-gray-400">
-            <span class="text-white font-bold">{{ file_count }}</span> PDF files found
-        </p>
-        <form method="post" action="{{ url('pipeline:import_folder') }}"
-              hx-post="{{ url('pipeline:import_folder') }}" hx-target="#import-result" hx-swap="innerHTML">
-            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-            <input type="hidden" name="folder_path" value="{{ folder_path }}">
-            <button type="submit"
-                    class="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl text-white font-medium hover:from-emerald-500 hover:to-teal-500 transition-all shadow-lg shadow-emerald-500/20">
-                Import All {{ file_count }} PDFs
-            </button>
-        </form>
-    </div>
-
-    <div id="import-result"></div>
-
     <!-- File List -->
-    <div class="glass rounded-2xl overflow-hidden">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="text-left text-gray-500 border-b border-gray-800">
-                    <th class="px-6 py-3 font-medium">Filename</th>
-                    <th class="px-6 py-3 font-medium">Size</th>
-                    <th class="px-6 py-3 font-medium">Status</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-800/50">
-                {% for file in files %}
-                <tr class="hover:bg-white/5 transition-colors">
-                    <td class="px-6 py-3">
-                        <div class="flex items-center gap-3">
-                            <svg class="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                            </svg>
-                            <span class="text-gray-300 font-mono text-xs">{{ file.name }}</span>
-                        </div>
-                    </td>
-                    <td class="px-6 py-3 text-gray-500">{{ file.size_mb }} MB</td>
-                    <td class="px-6 py-3">
-                        {% if file.imported %}
-                        <span class="px-2 py-1 rounded-full text-xs bg-emerald-500/10 text-emerald-400">Imported</span>
-                        {% else %}
-                        <span class="px-2 py-1 rounded-full text-xs bg-gray-500/10 text-gray-400">Not imported</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    {% if files %}
+    <div class="glass rounded-2xl p-6 border border-purple-400/20">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xl font-semibold text-white brand-font flex items-center gap-3">
+                <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                Files in Folder
+                <span class="text-sm font-normal text-gray-400 ml-2">({{ file_count }} files)</span>
+            </h2>
+
+            <form method="post" action="{{ url('pipeline:import_folder') }}"
+                  hx-post="{{ url('pipeline:import_folder') }}"
+                  hx-target="#import-result"
+                  hx-swap="innerHTML">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                <input type="hidden" name="folder_path" value="{{ folder_path }}">
+                <button type="submit" class="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-xl text-white font-medium transition-all shadow-lg shadow-purple-500/25">
+                    Import All Files
+                </button>
+            </form>
+        </div>
+
+        <div id="import-result" class="mb-4"></div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-white/10 text-sm text-gray-400">
+                        <th class="pb-3 font-medium">Filename</th>
+                        <th class="pb-3 font-medium w-24">Type</th>
+                        <th class="pb-3 font-medium w-32">Size</th>
+                        <th class="pb-3 font-medium text-right w-24">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="text-sm text-gray-300 divide-y divide-white/5">
+                    {% for f in files %}
+                    <tr class="hover:bg-white/5 transition-colors group">
+                        <td class="py-3 font-mono text-xs">{{ f.name }}</td>
+                        <td class="py-3">
+                            {% if f.type == 'pdf' %}
+                            <span class="px-2 py-1 rounded bg-red-500/10 text-red-300 text-xs font-bold uppercase">{{ f.type }}</span>
+                            {% elif f.type == 'json' %}
+                            <span class="px-2 py-1 rounded bg-purple-500/10 text-purple-300 text-xs font-bold uppercase">{{ f.type }}</span>
+                            {% elif f.type in ['txt', 'text'] %}
+                            <span class="px-2 py-1 rounded bg-blue-500/10 text-blue-300 text-xs font-bold uppercase">{{ f.type }}</span>
+                            {% else %}
+                            <span class="px-2 py-1 rounded bg-gray-500/10 text-gray-300 text-xs font-bold uppercase">{{ f.type }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3">{{ f.size_mb }} MB</td>
+                        <td class="py-3 text-right">
+                            {% if f.imported %}
+                            <span class="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20">Imported</span>
+                            {% else %}
+                            <span class="px-2.5 py-1 rounded-full bg-white/5 text-gray-400 text-xs font-medium border border-white/5">Pending</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
     {% endif %}
 </div>

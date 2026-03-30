@@ -1,34 +1,33 @@
-# ── Django core ──
+# ============================================================
+# Evolet — Medical Report OCR Pipeline
+# Dependencies
+# ============================================================
+
+# ── Django Core ──────────────────────────────────────────────
 Django>=5.1,<6.0
 django-jinja>=2.11
 whitenoise>=6.7
 
-# ── PDF & OCR ──
-pymupdf>=1.24
-pillow>=10.4
-python-doctr[torch]>=1.0
-# easyocr>=1.7               # optional: additional OCR engine
-# paddleocr>=2.9             # optional: additional OCR engine
-opencv-python-headless>=4.10
+# ── PDF & OCR ────────────────────────────────────────────────
+pymupdf>=1.24               # PDF text extraction
+pillow>=10.4                # Image processing
+python-doctr[torch]>=1.0    # OCR engine
+opencv-python-headless>=4.10 # Image processing utilities
 
-# ── LLM / GPU Inference ──
-torch>=2.2
-transformers>=4.44
-accelerate>=0.34
-bitsandbytes>=0.43
-safetensors>=0.4
-huggingface_hub>=0.25
+# ── LLM / GPU Inference ─────────────────────────────────────
+torch>=2.2                  # PyTorch
+transformers>=4.44          # HuggingFace transformers
+accelerate>=0.34            # Multi-GPU support
+bitsandbytes>=0.43          # 4-bit quantization
+safetensors>=0.4            # Safe model serialization
+huggingface_hub>=0.25       # Model download utilities
 
-# ── Data & utilities ──
-pandas>=2.2
-numpy>=1.26
-orjson>=3.10
-rapidfuzz>=3.9
-python-dateutil>=2.9
-pydantic>=2.9
-json-repair>=0.30
-tqdm>=4.66
-
-# ── Async task queue (lightweight, no Redis needed) ──
-django-huey>=5.1
-huey>=2.5
+# ── Data & Utilities ────────────────────────────────────────
+pandas>=2.2                 # Data manipulation
+numpy>=1.26                 # Numerical computing
+orjson>=3.10                # Fast JSON serialization
+rapidfuzz>=3.9              # Fuzzy string matching
+python-dateutil>=2.9        # Date parsing
+pydantic>=2.9               # Data validation
+json-repair>=0.30           # Fix malformed JSON from LLM
+tqdm>=4.66                  # Progress bars

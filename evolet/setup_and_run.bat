@@ -46,8 +46,8 @@ if exist "data\TMH_Patient_Reports" (
 echo.
 echo ============================================
 echo  Setup complete! Starting server...
-echo  Open http://127.0.0.1:8000 in your browser
+echo  Open http://127.0.0.1:9000 in your browser
 echo ============================================
 echo.
 
-python manage.py runserver 0.0.0.0:8000
+python manage.py runserver 0.0.0.0:9000

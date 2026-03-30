@@ -2,129 +2,159 @@
 {% block title %}{{ patient.display_name or patient.code }}{% endblock %}
 
 {% block content %}
-<div class="space-y-6 slide-up">
-    <!-- Header -->
-    <div class="glass rounded-2xl p-6">
-        <div class="flex items-start gap-6">
-            {% if patient.profile_image %}
-            <img src="{{ patient.profile_image.url }}" class="w-24 h-24 rounded-2xl object-cover ring-2 ring-gray-700 shadow-lg">
-            {% else %}
-            <div class="w-24 h-24 rounded-2xl bg-gradient-to-br from-cyan-600 to-violet-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
-                {{ patient.code[:2]|upper }}
-            </div>
-            {% endif %}
-            <div class="flex-grow">
-                <h1 class="text-3xl font-bold text-white">{{ patient.display_name or patient.code }}</h1>
-                <p class="text-gray-400 font-mono text-sm mt-1">{{ patient.code }}</p>
-                <div class="flex items-center gap-4 mt-4">
-                    <span class="px-3 py-1 rounded-full text-xs bg-cyan-500/10 text-cyan-400 font-medium">{{ mention_count }} mentions</span>
-                    <span class="px-3 py-1 rounded-full text-xs bg-violet-500/10 text-violet-400 font-medium">{{ category_count }} categories</span>
-                    {% for doc in documents %}
-                    <span class="px-3 py-1 rounded-full text-xs bg-gray-500/10 text-gray-400">{{ doc.page_count }} pages</span>
-                    {% endfor %}
+<div class="space-y-8 slide-up">
+    <!-- Header Card -->
+    <div class="glass rounded-3xl p-8 border border-purple-500/20 glow-purple relative overflow-hidden">
+        <!-- Ambient background for header -->
+        <div class="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-blue-500/5 -z-10"></div>
+        <div class="absolute -right-20 -top-20 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-6">
+                {% if patient.profile_image %}
+                <img src="{{ patient.profile_image.url }}" class="w-24 h-24 rounded-2xl object-cover ring-2 ring-purple-400/30 shadow-lg shadow-purple-900/20">
+                {% else %}
+                <div class="w-24 h-24 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-4xl font-extrabold text-white shadow-lg shadow-purple-900/20 border border-white/10">
+                    {{ patient.code[:2].upper() }}
+                </div>
+                {% endif %}
+                <div>
+                    <h1 class="text-3xl font-bold text-white mb-2 brand-font truncate max-w-xl">{{ patient.display_name or patient.code }}</h1>
+                    <p class="text-sm font-mono text-purple-300/80 mb-4">{{ patient.code }}</p>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <span class="px-3 py-1 bg-purple-500/10 text-purple-300 text-xs font-semibold rounded-lg border border-purple-500/20 shadow-sm">{{ mention_count }} mentions</span>
+                        <span class="px-3 py-1 bg-indigo-500/10 text-indigo-300 text-xs font-semibold rounded-lg border border-indigo-500/20 shadow-sm">{{ category_count }} categories</span>
+                        <span class="px-3 py-1 bg-blue-500/10 text-blue-300 text-xs font-semibold rounded-lg border border-blue-500/20 shadow-sm">{{ documents.count() }} source docs</span>
+                    </div>
                 </div>
             </div>
+
+            <div class="flex items-center gap-3">
             <a href="{{ url('pipeline:download_patient_json', patient_id=patient.id) }}"
-               class="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl text-white text-sm font-medium hover:from-cyan-500 hover:to-blue-500 transition-all flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-xl text-white font-medium transition-all shadow-lg shadow-purple-500/25">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                 </svg>
                 Download JSON
             </a>
-        </div>
-    </div>
-
-    <!-- Mentions by Category -->
-    <div class="space-y-4" x-data="{ openCategory: null }">
-        <h2 class="text-xl font-bold text-white">Clinical Mentions</h2>
-
-        {% for category, cat_mentions in grouped_mentions.items() %}
-        <div class="glass rounded-2xl overflow-hidden">
-            <button @click="openCategory = openCategory === '{{ category }}' ? null : '{{ category }}'"
-                    class="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-colors">
-                <div class="flex items-center gap-3">
-                    <span class="w-3 h-3 rounded-full
-                        {% if category == 'diagnosis' %}bg-red-400
-                        {% elif category == 'medication' %}bg-blue-400
-                        {% elif category == 'imaging' %}bg-purple-400
-                        {% elif category == 'pathology' %}bg-amber-400
-                        {% elif category == 'surgery' %}bg-rose-400
-                        {% elif category == 'plan' %}bg-emerald-400
-                        {% elif category == 'symptom' %}bg-orange-400
-                        {% elif category == 'lab' %}bg-teal-400
-                        {% elif category == 'genomics' %}bg-pink-400
-                        {% else %}bg-gray-400{% endif %}"></span>
-                    <span class="text-white font-semibold capitalize">{{ category }}</span>
-                    <span class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-400">{{ cat_mentions|length }}</span>
-                </div>
-                <svg class="w-5 h-5 text-gray-500 transition-transform" :class="{ 'rotate-180': openCategory === '{{ category }}' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                </svg>
-            </button>
-
-            <div x-show="openCategory === '{{ category }}'" x-transition class="border-t border-gray-800">
-                {% for mention in cat_mentions %}
-                <div class="p-5 border-b border-gray-800/50 last:border-0 hover:bg-white/3 transition-colors">
-                    <div class="flex items-start justify-between gap-4">
-                        <div class="flex-grow">
-                            <div class="flex items-center gap-2 mb-1">
-                                <span class="text-sm font-semibold text-white">{{ mention.label }}</span>
-                                {% if mention.certainty == 'confirmed' %}
-                                <span class="text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">confirmed</span>
-                                {% elif mention.certainty == 'possible' %}
-                                <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400">possible</span>
-                                {% elif mention.certainty == 'ruled_out' %}
-                                <span class="text-xs px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">ruled out</span>
-                                {% endif %}
-                                <span class="text-xs px-1.5 py-0.5 rounded bg-gray-500/10 text-gray-500">{{ mention.origin }}</span>
-                            </div>
-                            <p class="text-sm text-gray-300">{{ mention.value }}</p>
-                            {% if mention.evidence_quote %}
-                            <p class="mt-2 text-xs text-gray-500 italic border-l-2 border-gray-700 pl-3">
-                                "{{ mention.evidence_quote[:200] }}"
-                            </p>
-                            {% endif %}
-                        </div>
-                        {% if mention.date_text %}
-                        <span class="text-xs text-gray-500 whitespace-nowrap">{{ mention.date_text }}</span>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
             </div>
         </div>
-        {% endfor %}
     </div>
 
-    <!-- Notes -->
-    {% if notes %}
-    <div class="glass rounded-2xl p-6" x-data="{ showNotes: false }">
-        <button @click="showNotes = !showNotes" class="flex items-center justify-between w-full">
-            <h2 class="text-xl font-bold text-white">Raw Notes ({{ notes|length }})</h2>
-            <svg class="w-5 h-5 text-gray-500 transition-transform" :class="{ 'rotate-180': showNotes }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-        </button>
-        <div x-show="showNotes" x-transition class="mt-4 space-y-3">
-            {% for note in notes %}
-            <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-mono text-cyan-400">{{ note.note_id }}</span>
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs text-gray-500">signal: {{ note.signal_score }}</span>
-                        {% if note.needs_llm %}
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400">LLM</span>
-                        {% endif %}
-                        {% if note.is_low_value %}
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-gray-500/10 text-gray-500">low-value</span>
-                        {% endif %}
+    {% set patient_code = patient.code %}
+    {% include "pipeline/partials/relation_search_widget.html" %}
+
+    <!-- Mentions Section (Tabbed: Categories & Timeline) -->
+    <div x-data="{ activeTab: 'categories' }">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold text-white brand-font flex items-center gap-3">
+                <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+                Clinical Data
+            </h2>
+            
+            <!-- Tabs -->
+            <div class="flex items-center gap-2 bg-white/40 p-1.5 rounded-xl border border-purple-200">
+                <button @click="activeTab = 'categories'" 
+                        class="px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-sm"
+                        :class="activeTab === 'categories' ? 'bg-white text-purple-700 shadow-purple-500/20 ring-1 ring-purple-100' : 'text-gray-500 hover:text-purple-600 hover:bg-white/50'">
+                    Categories
+                </button>
+                <button @click="activeTab = 'timeline'" 
+                        class="px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-sm"
+                        :class="activeTab === 'timeline' ? 'bg-white text-purple-700 shadow-purple-500/20 ring-1 ring-purple-100' : 'text-gray-500 hover:text-purple-600 hover:bg-white/50'">
+                    Patient History
+                </button>
+            </div>
+        </div>
+
+        <!-- Categories Tab -->
+        <div x-show="activeTab === 'categories'" x-transition:enter="transition ease-out duration-300 transform" x-transition:enter-start="opacity-0 translateY-4" x-transition:enter-end="opacity-100 translateY-0" class="space-y-4">
+            {% for category, cat_mentions in grouped_mentions.items() %}
+            <div x-data="{ expanded: false }" class="glass rounded-2xl border border-white/5 overflow-hidden transition-all duration-300" :class="{ 'ring-1 ring-purple-500/30 glow-purple': expanded }">
+                <!-- Accordion Header -->
+                <button @click="expanded = !expanded" class="w-full px-6 py-4 flex items-center justify-between hover:bg-white/5 transition-colors focus:outline-none focus:bg-white/5">
+                    <div class="flex items-center gap-4">
+                        <span class="w-3 h-3 rounded-full {{ loop.cycle('bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.6)]', 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]', 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.6)]', 'bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.6)]') }}"></span>
+                        <h3 class="text-lg font-semibold text-white capitalize tracking-wide">{{ category|replace('_', ' ') }}</h3>
+                        <span class="px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600 text-xs font-bold">{{ cat_mentions|length }}</span>
+                    </div>
+                    <svg class="w-5 h-5 text-gray-500 transform transition-transform duration-300" :class="{ 'rotate-180 text-purple-600': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+
+                <!-- Accordion Content -->
+                <div x-show="expanded" x-collapse x-cloak class="border-t border-purple-200 bg-white/40">
+                    <div class="p-6">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {% for m in cat_mentions %}
+                            <div class="p-4 rounded-xl bg-white/60 border border-purple-100 hover:border-purple-300 transition-colors shadow-sm group">
+                                <div class="flex flex-col gap-1.5 mb-3">
+                                    <div class="flex items-start justify-between">
+                                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">{{ m.label }}</span>
+                                        <span class="text-xs font-mono text-purple-600 bg-purple-100 px-2 py-0.5 rounded border border-purple-200">{{ m.date_text or 'Undated' }}</span>
+                                    </div>
+                                    <span class="text-sm text-slate-800 font-medium break-words">{{ m.value }}</span>
+                                </div>
+
+                                {% if m.evidence_quote %}
+                                <div class="mt-3 p-3 rounded-lg bg-white border border-purple-100 relative shadow-sm">
+                                    <div class="absolute -left-1.5 top-1/2 transform -translate-y-1/2 w-1 h-3/4 bg-blue-400/50 rounded-full group-hover:bg-purple-500 transition-colors"></div>
+                                    <p class="text-xs text-slate-500 italic font-mono leading-relaxed line-clamp-3 group-hover:line-clamp-none transition-all duration-300 overflow-hidden">
+                                        "{{ m.evidence_quote }}"
+                                    </p>
+                                </div>
+                                {% endif %}
+                                <div class="mt-3 flex items-center justify-between text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                                    <span>Origin: {{ m.get_origin_display() }}</span>
+                                    <span>Certainty: <span class="text-{{ 'emerald-600' if m.certainty == 'confirmed' else 'amber-600' }}">{{ m.certainty }}</span></span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
-                <p class="text-sm text-gray-400 font-mono whitespace-pre-wrap leading-relaxed">{{ note.text[:500] }}{% if note.text|length > 500 %}...{% endif %}</p>
             </div>
             {% endfor %}
         </div>
+        
+        <!-- Timeline Tab (Structured History) -->
+        <div x-show="activeTab === 'timeline'" x-cloak x-transition:enter="transition ease-out duration-300 transform" x-transition:enter-start="opacity-0 translateY-4" x-transition:enter-end="opacity-100 translateY-0">
+            <div class="glass rounded-2xl border border-purple-100 p-8 shadow-sm">
+                <div class="relative border-l-2 border-purple-200/50 ml-4 space-y-8">
+                    {% for m in timeline_mentions %}
+                    <div class="relative pl-8 group">
+                        <!-- Timeline Dot -->
+                        <div class="absolute w-4 h-4 rounded-full bg-white border-2 border-purple-400 -left-[9px] top-1 group-hover:bg-purple-400 group-hover:shadow-[0_0_10px_rgba(167,139,250,0.6)] transition-all"></div>
+                        
+                        <!-- Content -->
+                        <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                            <div>
+                                <div class="flex items-center gap-3 mb-1">
+                                    <span class="text-sm font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md border border-purple-200 shadow-sm font-mono">
+                                        {{ m.date_text or 'Undated' }}
+                                    </span>
+                                    <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                        {{ m.category|replace('_', ' ') }}
+                                    </span>
+                                </div>
+                                <h4 class="text-base font-bold text-slate-800">{{ m.label }}</h4>
+                                <p class="text-sm font-medium text-slate-600 mt-1">{{ m.value }}</p>
+                            </div>
+                            
+                            {% if m.evidence_quote %}
+                            <div class="md:w-1/3 p-3 rounded-lg bg-white/70 border border-purple-100 text-xs text-slate-500 italic font-mono shadow-sm">
+                                "{{ m.evidence_quote }}"
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-slate-500 pl-4 py-4 italic">No structured clinical findings extracted yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
     </div>
-    {% endif %}
 </div>
 {% endblock %}

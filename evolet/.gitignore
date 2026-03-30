@@ -1,0 +1,67 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── Django ────────────────────────────────────────────────────────────────────
+*.sqlite3
+staticfiles/
+local_settings.py
+
+# ── Media & Uploads (patient data — never commit) ────────────────────────────
+media/
+/media/
+
+# ── Patient data — PDFs, JSONs, images (sensitive medical data) ──────────────
+data/
+*.pdf
+*_final.json
+*.png
+*.jpg
+*.jpeg
+*.tiff
+*.tif
+
+# ── Model weights & cache ─────────────────────────────────────────────────────
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.gguf
+.cache/
+huggingface/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+evolet_pipeline.log
+
+# ── Django migrations (keep these if you want schema history) ─────────────────
+# Uncomment the next line ONLY if you want to exclude migrations:
+# pipeline/migrations/
+
+# ── OS / Editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Jupyter notebooks with outputs (keep .ipynb structure, not outputs) ───────
+# Comment this out if you want full notebook output committed:
+*.ipynb
+
+# ── Zip / archives ────────────────────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.rar

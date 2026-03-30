@@ -1,20 +1,44 @@
 <!-- HTMX partial: Upload result -->
-<div class="glass rounded-2xl p-6 border border-emerald-500/30 bg-emerald-500/5 slide-up">
+<div class="glass rounded-2xl p-6 border border-purple-400/30 bg-purple-500/5 slide-up">
     <div class="flex items-center gap-3 mb-3">
-        <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
-        <h3 class="text-lg font-semibold text-emerald-400">Import Successful</h3>
+        <h3 class="text-lg font-semibold text-purple-300">Import Successful</h3>
     </div>
-    <p class="text-gray-300">
+    <p class="text-gray-300 mb-2">
         <span class="text-white font-bold">{{ count }}</span> file(s) imported successfully.
         {% if folder %}from <span class="font-mono text-xs text-gray-400">{{ folder }}</span>{% endif %}
     </p>
+
+    {% if pdf_count or json_count or txt_count %}
+    <div class="flex flex-wrap gap-2 mb-4">
+        {% if json_count %}
+        <span class="px-3 py-1 rounded-full text-xs bg-purple-500/10 text-purple-300 font-medium">{{ json_count }} JSON records</span>
+        {% endif %}
+        {% if pdf_count %}
+        <span class="px-3 py-1 rounded-full text-xs bg-blue-500/10 text-blue-300 font-medium">{{ pdf_count }} PDFs</span>
+        {% endif %}
+        {% if txt_count %}
+        <span class="px-3 py-1 rounded-full text-xs bg-indigo-500/10 text-indigo-300 font-medium">{{ txt_count }} text files</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if errors %}
+    <div class="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+        <p class="text-red-400 text-sm font-medium mb-1">Some files had issues:</p>
+        {% for err in errors %}
+        <p class="text-red-300 text-xs">{{ err }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="mt-4 flex gap-3">
         <a href="{{ url('pipeline:patient_list') }}" class="px-4 py-2 bg-white/5 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors">View Patients →</a>
         <form method="post" action="{{ url('pipeline:start_run') }}" class="inline">
             <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-            <button type="submit" class="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg text-sm text-white font-medium">Run Pipeline →</button>
+            <button type="submit" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg text-sm text-white font-medium hover:from-purple-500 hover:to-blue-500">Run Pipeline →</button>
         </form>
     </div>
 </div>

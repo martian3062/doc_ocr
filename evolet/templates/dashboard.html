@@ -3,200 +3,173 @@
 
 {% block content %}
 <div class="space-y-8 slide-up">
-    <!-- Hero Section -->
-    <div class="text-center py-6">
-        <h1 class="text-4xl md:text-5xl font-extrabold gradient-text glow-text mb-3">Evolet Pipeline</h1>
-        <p class="text-gray-400 text-lg">TMH Patient PDF Extraction &mdash; Lossless-first + LLM rescue</p>
+    <!-- Hero -->
+    <div class="text-center py-8">
+        <h1 class="text-5xl md:text-6xl font-extrabold gradient-text brand-font mb-3">Evolet Pipeline</h1>
+        <p class="text-lg text-gray-400">TMH Patient PDF Extraction — Lossless-first + LLM rescue</p>
     </div>
 
-    <!-- Stats Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <!-- Total Patients -->
-        <div class="glass rounded-2xl p-6 card-shine glass-hover transition-all group">
+    <!-- Stat Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <!-- Patients -->
+        <div class="glass rounded-2xl p-6 card-hover glow-purple">
             <div class="flex items-center justify-between mb-4">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-700/20 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
                     </svg>
                 </div>
-                <span class="text-xs font-medium px-2 py-1 rounded-full bg-cyan-500/10 text-cyan-400">Patients</span>
+                <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-300">Patients</span>
             </div>
-            <div class="text-3xl font-bold text-white mb-1">{{ total_patients }}</div>
-            <p class="text-sm text-gray-500">Total patient records</p>
+            <div class="text-4xl font-bold text-white brand-font">{{ total_patients }}</div>
+            <p class="text-sm text-gray-400 mt-1">Total patient records</p>
         </div>
 
         <!-- PDFs -->
-        <div class="glass rounded-2xl p-6 card-shine glass-hover transition-all">
+        <div class="glass rounded-2xl p-6 card-hover glow-blue">
             <div class="flex items-center justify-between mb-4">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500/20 to-violet-500/5 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-700/20 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
                     </svg>
                 </div>
-                <span class="text-xs font-medium px-2 py-1 rounded-full bg-violet-500/10 text-violet-400">PDFs</span>
+                <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-300">PDFs</span>
             </div>
-            <div class="text-3xl font-bold text-white mb-1">{{ total_pdfs }}</div>
-            <p class="text-sm text-gray-500">Documents loaded</p>
+            <div class="text-4xl font-bold text-white brand-font">{{ total_pdfs }}</div>
+            <p class="text-sm text-gray-400 mt-1">Documents loaded</p>
         </div>
 
         <!-- Mentions -->
-        <div class="glass rounded-2xl p-6 card-shine glass-hover transition-all">
+        <div class="glass rounded-2xl p-6 card-hover">
             <div class="flex items-center justify-between mb-4">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-700/20 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
                     </svg>
                 </div>
-                <span class="text-xs font-medium px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400">Mentions</span>
+                <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-300">Mentions</span>
             </div>
-            <div class="text-3xl font-bold text-white mb-1">{{ total_mentions }}</div>
-            <p class="text-sm text-gray-500">Clinical mentions extracted</p>
+            <div class="text-4xl font-bold text-white brand-font">{{ total_mentions }}</div>
+            <p class="text-sm text-gray-400 mt-1">Clinical mentions extracted</p>
         </div>
 
         <!-- GPU -->
-        <div class="glass rounded-2xl p-6 card-shine glass-hover transition-all">
+        <div class="glass rounded-2xl p-6 card-hover">
             <div class="flex items-center justify-between mb-4">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500/20 to-pink-700/20 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-violet-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
                     </svg>
                 </div>
-                <span class="text-xs font-medium px-2 py-1 rounded-full {% if gpu.available %}bg-emerald-500/10 text-emerald-400{% else %}bg-red-500/10 text-red-400{% endif %}">
-                    {{ "Online" if gpu.available else "CPU" }}
+                <span class="text-xs font-medium px-2.5 py-1 rounded-full {% if gpu.available %}bg-purple-500/10 text-purple-300{% else %}bg-gray-500/10 text-gray-400{% endif %}">
+                    {% if gpu.available %}GPU{% else %}CPU{% endif %}
                 </span>
             </div>
-            {% if gpu.available %}
-            <div class="text-3xl font-bold text-white mb-1">{{ gpu.free_gb }} GB</div>
-            <p class="text-sm text-gray-500">{{ gpu.device_name }}</p>
-            <div class="mt-2 w-full bg-gray-700 rounded-full h-1.5">
-                <div class="bg-gradient-to-r from-cyan-500 to-violet-500 h-1.5 rounded-full" style="width: {{ gpu.utilization_pct }}%"></div>
+            <div class="text-4xl font-bold text-white brand-font">
+                {% if gpu.available %}{{ gpu.device_name[:12] }}{% else %}CPU{% endif %}
             </div>
-            {% else %}
-            <div class="text-3xl font-bold text-white mb-1">CPU</div>
-            <p class="text-sm text-gray-500">No GPU detected</p>
-            {% endif %}
+            <p class="text-sm text-gray-400 mt-1">{% if gpu.available %}{{ gpu.free_gb }}GB free{% else %}No GPU detected{% endif %}</p>
         </div>
     </div>
 
+    <!-- Active Run -->
+    {% if active_run %}
+    <div class="glass rounded-2xl p-6 glow border border-purple-500/20"
+         hx-get="{{ url('pipeline:run_progress', run_id=active_run.id) }}"
+         hx-trigger="every 3s" hx-swap="innerHTML">
+        {% set run = active_run %}
+        {% include "pipeline/partials/run_progress.html" %}
+    </div>
+    {% endif %}
+
+    {% set patient_code = '' %}
+    {% include "pipeline/partials/relation_search_widget.html" %}
+
     <!-- Quick Actions -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <a href="{{ url('pipeline:folder_browser') }}" class="glass rounded-2xl p-6 glass-hover transition-all group cursor-pointer block">
-            <div class="flex items-center gap-4">
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-600 to-blue-700 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-                    </svg>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold text-white">Browse Folders</h3>
-                    <p class="text-sm text-gray-400">Import PDFs from server folders</p>
-                </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <a href="{{ url('pipeline:folder_browser') }}"
+           class="glass rounded-2xl p-6 card-hover flex items-center gap-4 group">
+            <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-white font-bold text-lg brand-font">Browse Folders</h3>
+                <p class="text-gray-400 text-sm">Import PDFs from server folders</p>
             </div>
         </a>
 
-        <a href="{{ url('pipeline:upload') }}" class="glass rounded-2xl p-6 glass-hover transition-all group cursor-pointer block">
-            <div class="flex items-center gap-4">
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-                    </svg>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold text-white">Upload Files</h3>
-                    <p class="text-sm text-gray-400">Upload PDF or text files</p>
-                </div>
+        <a href="{{ url('pipeline:upload') }}"
+           class="glass rounded-2xl p-6 card-hover flex items-center gap-4 group">
+            <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-all">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-white font-bold text-lg brand-font">Upload Files</h3>
+                <p class="text-gray-400 text-sm">Upload PDF, JSON, or text files</p>
             </div>
         </a>
 
-        <form method="post" action="{{ url('pipeline:start_run') }}" class="glass rounded-2xl p-6 glass-hover transition-all group cursor-pointer">
+        <form method="post" action="{{ url('pipeline:start_run') }}"
+              class="glass rounded-2xl p-6 card-hover flex items-center gap-4 group cursor-pointer">
             <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-            <button type="submit" class="flex items-center gap-4 w-full text-left" {% if total_pdfs == 0 %}disabled{% endif %}>
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <button type="submit" class="flex items-center gap-4 w-full text-left">
+                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
                     <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                     </svg>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold text-white">Run Pipeline</h3>
-                    <p class="text-sm text-gray-400">Process all {{ total_pdfs }} PDFs</p>
+                    <h3 class="text-white font-bold text-lg brand-font">Run Pipeline</h3>
+                    <p class="text-gray-400 text-sm">Process all {{ total_pdfs }} PDFs</p>
+                </div>
+            </button>
+        </form>
+
+        <form method="post" action="{{ url('pipeline:start_run_one') }}"
+              class="glass rounded-2xl p-6 card-hover flex items-center gap-4 group cursor-pointer">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+            <button type="submit"
+                    class="flex items-center gap-4 w-full text-left{% if total_pdfs == 0 %} opacity-50 cursor-not-allowed{% endif %}"
+                    {% if total_pdfs == 0 %}disabled{% endif %}>
+                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:shadow-emerald-500/40 transition-all">
+                    <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-white font-bold text-lg brand-font">Run first PDF only</h3>
+                    <p class="text-gray-400 text-sm">{% if total_pdfs %}One document — quick test{% else %}Import a PDF first{% endif %}</p>
                 </div>
             </button>
         </form>
     </div>
 
-    <!-- Active Run -->
-    {% if active_run %}
-    <div class="glass rounded-2xl p-6 glow border-cyan-500/30" id="active-run-panel"
-         hx-get="{{ url('pipeline:run_progress', run_id=active_run.id) }}"
-         hx-trigger="every 3s"
-         hx-swap="innerHTML">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                <span class="w-3 h-3 rounded-full bg-cyan-400 animate-pulse"></span>
-                Pipeline Running
-            </h2>
-            <span class="text-sm text-gray-400">{{ active_run.name }}</span>
-        </div>
-        <div class="space-y-3">
-            <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-400">Stage: <span class="text-cyan-400 font-medium">{{ active_run.get_status_display() }}</span></span>
-                <span class="text-white font-bold">{{ active_run.progress_percent }}%</span>
-            </div>
-            <div class="w-full bg-gray-700 rounded-full h-2">
-                <div class="bg-gradient-to-r from-cyan-500 to-violet-500 h-2 rounded-full transition-all duration-500" style="width: {{ active_run.progress_percent }}%"></div>
-            </div>
-            <div class="grid grid-cols-4 gap-4 text-center text-xs text-gray-500">
-                <div><span class="block text-white text-lg font-bold">{{ active_run.processed_pdfs }}</span>PDFs done</div>
-                <div><span class="block text-white text-lg font-bold">{{ active_run.total_notes }}</span>Notes</div>
-                <div><span class="block text-white text-lg font-bold">{{ active_run.resolved_notes }}</span>Resolved</div>
-                <div><span class="block text-white text-lg font-bold">{{ active_run.total_mentions }}</span>Mentions</div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
     <!-- Recent Runs -->
     {% if recent_runs %}
     <div class="glass rounded-2xl p-6">
-        <h2 class="text-xl font-bold text-white mb-4">Recent Runs</h2>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-left text-gray-500 border-b border-gray-800">
-                        <th class="pb-3 font-medium">Run</th>
-                        <th class="pb-3 font-medium">Status</th>
-                        <th class="pb-3 font-medium">PDFs</th>
-                        <th class="pb-3 font-medium">Mentions</th>
-                        <th class="pb-3 font-medium">Duration</th>
-                        <th class="pb-3 font-medium">Date</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-800/50">
-                    {% for run in recent_runs %}
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="py-3">
-                            <a href="{{ url('pipeline:run_detail', run_id=run.id) }}" class="text-cyan-400 hover:text-cyan-300 font-medium">
-                                {{ run.name or run.id.hex[:8] }}
-                            </a>
-                        </td>
-                        <td class="py-3">
-                            {% if run.status == 'completed' %}
-                            <span class="px-2 py-1 rounded-full text-xs bg-emerald-500/10 text-emerald-400">{{ run.get_status_display() }}</span>
-                            {% elif run.status == 'failed' %}
-                            <span class="px-2 py-1 rounded-full text-xs bg-red-500/10 text-red-400">{{ run.get_status_display() }}</span>
-                            {% else %}
-                            <span class="px-2 py-1 rounded-full text-xs bg-cyan-500/10 text-cyan-400">{{ run.get_status_display() }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="py-3 text-gray-400">{{ run.processed_pdfs }}/{{ run.total_pdfs }}</td>
-                        <td class="py-3 text-gray-400">{{ run.total_mentions }}</td>
-                        <td class="py-3 text-gray-400">{{ "%.0f"|format(run.duration_seconds) }}s</td>
-                        <td class="py-3 text-gray-500">{{ run.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <h2 class="text-xl font-bold text-white brand-font mb-4">Recent Runs</h2>
+        <div class="space-y-2">
+            {% for run in recent_runs %}
+            <a href="{{ url('pipeline:run_detail', run_id=run.id) }}"
+               class="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors">
+                <div class="flex items-center gap-3">
+                    {% if run.status == 'completed' %}
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    {% elif run.status == 'failed' %}
+                    <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+                    {% else %}
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></span>
+                    {% endif %}
+                    <span class="text-sm text-white">{{ run.name or run.id.hex[:8] }}</span>
+                    <span class="text-xs text-gray-500">{{ run.get_status_display() }}</span>
+                </div>
+                <span class="text-xs text-gray-500">{{ run.created_at.strftime('%b %d, %H:%M') }}</span>
+            </a>
+            {% endfor %}
         </div>
     </div>
     {% endif %}

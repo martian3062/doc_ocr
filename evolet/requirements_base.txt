@@ -1,0 +1,5 @@
+# Core Django (for basic setup & run)
+Django>=5.1,<6.0
+whitenoise>=6.7
+orjson>=3.10
+pillow>=10.4

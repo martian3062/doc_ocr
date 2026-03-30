@@ -44,8 +44,8 @@ fi
 echo ""
 echo "============================================"
 echo "  Setup complete! Starting server..."
-echo "  Open http://0.0.0.0:8000 in your browser"
+echo "  Open http://0.0.0.0:9000 in your browser"
 echo "============================================"
 echo ""
 
-python manage.py runserver 0.0.0.0:8000
+python manage.py runserver 0.0.0.0:9000
