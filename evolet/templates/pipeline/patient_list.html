@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Patients{% endblock %}
+
+{% block content %}
+<div class="space-y-6 slide-up">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-white">Patients</h1>
+            <p class="text-gray-400 mt-1">{{ total }} patient records</p>
+        </div>
+
+        <!-- Search -->
+        <div class="relative">
+            <input type="text" name="q" value="{{ query }}"
+                   hx-get="{{ url('pipeline:patient_list') }}?partial=1"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#patient-table-body"
+                   hx-swap="innerHTML"
+                   hx-include="this"
+                   placeholder="Search patients..."
+                   class="pl-10 pr-4 py-2.5 w-72 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-sm">
+            <svg class="w-4 h-4 text-gray-500 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Patient Table -->
+    <div class="glass rounded-2xl overflow-hidden">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-500 border-b border-gray-800">
+                    <th class="px-6 py-4 font-medium">Patient</th>
+                    <th class="px-6 py-4 font-medium">Documents</th>
+                    <th class="px-6 py-4 font-medium">Mentions</th>
+                    <th class="px-6 py-4 font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="patient-table-body" class="divide-y divide-gray-800/50">
+                {% for patient in patients %}
+                <tr class="hover:bg-white/5 transition-colors group">
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            {% if patient.profile_image %}
+                            <img src="{{ patient.profile_image.url }}" class="w-10 h-10 rounded-full object-cover ring-2 ring-gray-700">
+                            {% else %}
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-600 to-violet-600 flex items-center justify-center text-white font-bold text-sm">
+                                {{ patient.code[:2]|upper }}
+                            </div>
+                            {% endif %}
+                            <div>
+                                <a href="{{ url('pipeline:patient_detail', patient_id=patient.id) }}" class="text-white font-medium hover:text-cyan-400 transition-colors">
+                                    {{ patient.display_name or patient.code }}
+                                </a>
+                                <p class="text-xs text-gray-500 font-mono">{{ patient.code }}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 text-gray-400">{{ patient.doc_count }}</td>
+                    <td class="px-6 py-4">
+                        {% if patient.mention_count > 0 %}
+                        <span class="px-2 py-1 rounded-full text-xs bg-emerald-500/10 text-emerald-400">{{ patient.mention_count }}</span>
+                        {% else %}
+                        <span class="text-gray-600">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4">
+                        <a href="{{ url('pipeline:patient_detail', patient_id=patient.id) }}"
+                           class="text-cyan-400 hover:text-cyan-300 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                            View →
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

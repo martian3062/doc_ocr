@@ -1,0 +1,29 @@
+<!-- HTMX partial: Patient table rows for search -->
+{% for patient in patients %}
+<tr class="hover:bg-white/5 transition-colors group">
+    <td class="px-6 py-4">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-600 to-violet-600 flex items-center justify-center text-white font-bold text-sm">
+                {{ patient.code[:2]|upper }}
+            </div>
+            <div>
+                <a href="{{ url('pipeline:patient_detail', patient_id=patient.id) }}" class="text-white font-medium hover:text-cyan-400 transition-colors">
+                    {{ patient.display_name or patient.code }}
+                </a>
+                <p class="text-xs text-gray-500 font-mono">{{ patient.code }}</p>
+            </div>
+        </div>
+    </td>
+    <td class="px-6 py-4 text-gray-400">{{ patient.doc_count }}</td>
+    <td class="px-6 py-4">
+        {% if patient.mention_count > 0 %}
+        <span class="px-2 py-1 rounded-full text-xs bg-emerald-500/10 text-emerald-400">{{ patient.mention_count }}</span>
+        {% else %}
+        <span class="text-gray-600">&mdash;</span>
+        {% endif %}
+    </td>
+    <td class="px-6 py-4">
+        <a href="{{ url('pipeline:patient_detail', patient_id=patient.id) }}" class="text-cyan-400 hover:text-cyan-300 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">View →</a>
+    </td>
+</tr>
+{% endfor %}

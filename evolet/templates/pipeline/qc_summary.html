@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}QC Summary{% endblock %}
+
+{% block content %}
+<div class="space-y-6 slide-up">
+    <div>
+        <h1 class="text-3xl font-bold text-white">Quality Control</h1>
+        <p class="text-gray-400 mt-1">Extraction quality overview</p>
+    </div>
+
+    {% if summary %}
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div class="glass rounded-2xl p-5 text-center">
+            <div class="text-3xl font-bold text-white">{{ summary.total_patients }}</div>
+            <div class="text-xs text-gray-500 mt-1">Patients</div>
+        </div>
+        <div class="glass rounded-2xl p-5 text-center">
+            <div class="text-3xl font-bold text-cyan-400">{{ summary.total_mentions }}</div>
+            <div class="text-xs text-gray-500 mt-1">Total Mentions</div>
+        </div>
+        <div class="glass rounded-2xl p-5 text-center">
+            <div class="text-3xl font-bold text-violet-400">{{ summary.avg_mentions_per_patient }}</div>
+            <div class="text-xs text-gray-500 mt-1">Avg per Patient</div>
+        </div>
+        <div class="glass rounded-2xl p-5 text-center">
+            <div class="text-3xl font-bold text-emerald-400">{{ summary.patients_with_diagnosis }}</div>
+            <div class="text-xs text-gray-500 mt-1">With Diagnosis</div>
+        </div>
+        <div class="glass rounded-2xl p-5 text-center">
+            <div class="text-3xl font-bold {% if summary.patients_with_flags > 0 %}text-amber-400{% else %}text-emerald-400{% endif %}">{{ summary.patients_with_flags }}</div>
+            <div class="text-xs text-gray-500 mt-1">Flagged</div>
+        </div>
+    </div>
+
+    <!-- Coverage -->
+    <div class="glass rounded-2xl p-6">
+        <h2 class="text-lg font-bold text-white mb-4">Category Coverage</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {% for label, count in [("Diagnosis", summary.patients_with_diagnosis), ("Medication", summary.patients_with_medication), ("Imaging", summary.patients_with_imaging), ("Pathology", summary.patients_with_pathology)] %}
+            <div class="p-4 rounded-xl bg-gray-800/50">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm text-gray-400">{{ label }}</span>
+                    <span class="text-sm font-bold text-white">{{ count }}/{{ summary.total_patients }}</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2">
+                    <div class="bg-gradient-to-r from-cyan-500 to-violet-500 h-2 rounded-full"
+                         style="width: {{ (count / summary.total_patients * 100) if summary.total_patients > 0 else 0 }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Detailed Table -->
+    {% if qc_rows %}
+    <div class="glass rounded-2xl overflow-hidden">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-500 border-b border-gray-800">
+                    <th class="px-6 py-3 font-medium">Patient</th>
+                    <th class="px-6 py-3 font-medium">Pages</th>
+                    <th class="px-6 py-3 font-medium">Notes</th>
+                    <th class="px-6 py-3 font-medium">Mentions</th>
+                    <th class="px-6 py-3 font-medium">Categories</th>
+                    <th class="px-6 py-3 font-medium">Flags</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-800/50">
+                {% for row in qc_rows %}
+                <tr class="hover:bg-white/5 transition-colors {% if row.review_flags > 0 %}bg-amber-500/5{% endif %}">
+                    <td class="px-6 py-3 text-white font-medium">{{ row.patient_code }}</td>
+                    <td class="px-6 py-3 text-gray-400">{{ row.page_count }}</td>
+                    <td class="px-6 py-3 text-gray-400">{{ row.note_count }}</td>
+                    <td class="px-6 py-3">
+                        <span class="px-2 py-0.5 rounded-full text-xs {% if row.mention_count > 0 %}bg-emerald-500/10 text-emerald-400{% else %}bg-red-500/10 text-red-400{% endif %}">
+                            {{ row.mention_count }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-3 text-gray-400">{{ row.category_count }}</td>
+                    <td class="px-6 py-3">
+                        {% if row.review_flags > 0 %}
+                        <span class="px-2 py-0.5 rounded-full text-xs bg-amber-500/10 text-amber-400">{{ row.review_flags }} flags</span>
+                        {% else %}
+                        <span class="text-gray-600">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="glass rounded-2xl p-12 text-center">
+        <p class="text-gray-500 text-lg">No extraction results yet. Run the pipeline first.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

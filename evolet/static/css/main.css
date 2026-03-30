@@ -1,0 +1,18 @@
+/* Evolet TMH OCR Pipeline — Custom styles */
+/* Most styling is done via Tailwind CSS CDN */
+/* This file handles edge cases and print styles */
+
+@media print {
+    nav, footer, .no-print { display: none !important; }
+    body { background: white !important; color: black !important; }
+    .glass { background: white !important; border: 1px solid #ddd !important; }
+}
+
+/* Smooth scroll */
+html { scroll-behavior: smooth; }
+
+/* Selection color */
+::selection {
+    background: rgba(6, 182, 212, 0.3);
+    color: white;
+}

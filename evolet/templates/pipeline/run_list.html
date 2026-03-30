@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Pipeline Runs{% endblock %}
+
+{% block content %}
+<div class="space-y-6 slide-up">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold text-white">Pipeline Runs</h1>
+            <p class="text-gray-400 mt-1">History of extraction runs</p>
+        </div>
+        <form method="post" action="{{ url('pipeline:start_run') }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+            <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl text-white font-medium hover:from-emerald-500 hover:to-teal-500 transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                </svg>
+                New Run
+            </button>
+        </form>
+    </div>
+
+    <div class="glass rounded-2xl overflow-hidden">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-500 border-b border-gray-800">
+                    <th class="px-6 py-4 font-medium">Run</th>
+                    <th class="px-6 py-4 font-medium">Status</th>
+                    <th class="px-6 py-4 font-medium">Progress</th>
+                    <th class="px-6 py-4 font-medium">Mentions</th>
+                    <th class="px-6 py-4 font-medium">Duration</th>
+                    <th class="px-6 py-4 font-medium">Date</th>
+                    <th class="px-6 py-4 font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-800/50">
+                {% for run in runs %}
+                <tr class="hover:bg-white/5 transition-colors">
+                    <td class="px-6 py-4">
+                        <a href="{{ url('pipeline:run_detail', run_id=run.id) }}" class="text-cyan-400 hover:text-cyan-300 font-medium">
+                            {{ run.name or run.id.hex[:8] }}
+                        </a>
+                        <p class="text-xs text-gray-600 font-mono">{{ run.model_id }}</p>
+                    </td>
+                    <td class="px-6 py-4">
+                        {% if run.status == 'completed' %}
+                        <span class="px-2.5 py-1 rounded-full text-xs bg-emerald-500/10 text-emerald-400 font-medium">✓ {{ run.get_status_display() }}</span>
+                        {% elif run.status == 'failed' %}
+                        <span class="px-2.5 py-1 rounded-full text-xs bg-red-500/10 text-red-400 font-medium">✗ {{ run.get_status_display() }}</span>
+                        {% else %}
+                        <span class="px-2.5 py-1 rounded-full text-xs bg-cyan-500/10 text-cyan-400 font-medium flex items-center gap-1 w-fit">
+                            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                            {{ run.get_status_display() }}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-24 bg-gray-700 rounded-full h-1.5">
+                                <div class="bg-gradient-to-r from-cyan-500 to-violet-500 h-1.5 rounded-full" style="width: {{ run.progress_percent }}%"></div>
+                            </div>
+                            <span class="text-xs text-gray-400">{{ run.processed_pdfs }}/{{ run.total_pdfs }}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 text-gray-400">{{ run.total_mentions }}</td>
+                    <td class="px-6 py-4 text-gray-500">{{ "%.0f"|format(run.duration_seconds) }}s</td>
+                    <td class="px-6 py-4 text-gray-500">{{ run.created_at.strftime('%b %d, %H:%M') }}</td>
+                    <td class="px-6 py-4">
+                        {% if run.status == 'completed' %}
+                        <a href="{{ url('pipeline:download_run_zip', run_id=run.id) }}" class="text-cyan-400 hover:text-cyan-300 text-xs">Download</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

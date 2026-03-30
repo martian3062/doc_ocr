@@ -1,0 +1,13 @@
+<!-- HTMX partial: GPU status widget -->
+{% if gpu.available %}
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10">
+    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+    <span class="text-xs text-emerald-400 font-medium">{{ gpu.device_name }}</span>
+    <span class="text-xs text-gray-500">{{ gpu.free_gb }}GB free</span>
+</div>
+{% else %}
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-500/10">
+    <span class="w-2 h-2 rounded-full bg-gray-500"></span>
+    <span class="text-xs text-gray-500">CPU mode</span>
+</div>
+{% endif %}
