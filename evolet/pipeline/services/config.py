@@ -78,6 +78,18 @@ NATIVE_TEXT_MIN_WORDS = 22
 NATIVE_TEXT_MIN_ALPHA_RATIO = 0.28
 
 
+# ── Embedded image OCR (EasyOCR) ────────────────────────────────────────────
+# When True, images embedded inside PDF pages (e.g. lab-result scans, chart
+# images) are extracted and run through EasyOCR separately from the DocTR
+# whole-page OCR path.  Catches clinical data that lives inside images embedded
+# in otherwise-text PDFs — a gap DocTR doesn't cover.
+USE_EMBEDDED_IMAGE_OCR = True
+
+# Minimum pixel area (width × height) for an embedded image to be worth OCR-ing.
+# Skips small decorative images, logos, and icons.
+EMBEDDED_IMAGE_MIN_PIXELS = 40_000   # ~200×200 px
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. Note Segmentation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -95,7 +107,7 @@ DEDUP_EXACT_NOTES = True
 
 # Safety cap: never send more than this many notes to the LLM per patient
 # (prevents runaway GPU time on very long PDFs)
-MAX_NOTES_PER_PATIENT_FOR_LLM = 24
+MAX_NOTES_PER_PATIENT_FOR_LLM = 16
 
 # A note needs at least this clinical signal score to be worth sending to the LLM
 MIN_SIGNAL_FOR_LLM = 3
@@ -119,10 +131,12 @@ MEDIUM_NOTE_WORDS = 220   # ≤ this → "medium" bucket
 LONG_NOTE_WORDS   = 380   # ≤ this → "long"   bucket
                           # > 380  → "xlong"  bucket
 
-# Batch sizes differ between GPU and CPU to stay within memory limits
-SHORT_BATCH_SIZE  = 3 if GPU_AVAILABLE else 1
-MEDIUM_BATCH_SIZE = 2 if GPU_AVAILABLE else 1
-LONG_BATCH_SIZE   = 1   # one note at a time for long notes
+# Batch sizes differ between GPU and CPU to stay within memory limits.
+# L4 / A100 class GPUs (≥16 GB VRAM) can sustain higher throughput;
+# the larger values below are tuned for 24 GB L4 + Qwen 2.5 1.5B 4-bit.
+SHORT_BATCH_SIZE  = 6 if GPU_AVAILABLE else 1
+MEDIUM_BATCH_SIZE = 4 if GPU_AVAILABLE else 1
+LONG_BATCH_SIZE   = 2 if GPU_AVAILABLE else 1
 XLONG_BATCH_SIZE  = 1   # one note at a time for extra-long notes
 
 
@@ -149,6 +163,12 @@ DO_SAMPLE = False
 
 # Maximum worker threads for I/O-bound stages (extraction, photo, etc.)
 MAX_WORKERS = int(os.environ.get("EVOLET_MAX_WORKERS", "4"))
+
+# Number of documents processed concurrently in Phase 1.
+# CPU phases (native extract, segmentation, regex) run in parallel;
+# GPU phases (DocTR, EasyOCR) are serialised by a lock inside pdf_extractor.py.
+# For single-GPU servers, keep at 4 — increasing beyond this adds thread overhead.
+DOC_WORKERS = int(os.environ.get("EVOLET_DOC_WORKERS", "4"))
 
 # Skip re-processing PDFs that already have PageLedger rows in the database
 SKIP_EXISTING = True

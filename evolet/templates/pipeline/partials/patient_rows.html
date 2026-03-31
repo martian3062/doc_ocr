@@ -24,10 +24,28 @@
         {% endif %}
     </td>
     <td class="py-4 px-6 text-right">
-        <a href="{{ url('pipeline:patient_detail', patient_id=patient.id) }}" class="text-purple-400 hover:text-purple-300 text-sm font-medium opacity-0 group-hover:opacity-100 transition-all flex items-center justify-end gap-1">
-            View Details
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-        </a>
+        <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+            <a href="{{ url('pipeline:patient_detail', patient_id=patient.id) }}"
+               onclick="event.stopPropagation()"
+               class="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1">
+                View
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </a>
+            <form method="post"
+                  action="{{ url('pipeline:delete_patient', patient_id=patient.id) }}"
+                  onclick="event.stopPropagation()"
+                  hx-post="{{ url('pipeline:delete_patient', patient_id=patient.id) }}"
+                  hx-target="closest tr"
+                  hx-swap="outerHTML swap:0.4s"
+                  hx-confirm="Delete {{ patient.code }} and all their data? This cannot be undone."
+                  hx-include="[name=csrfmiddlewaretoken]">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                <button type="submit"
+                        class="px-2.5 py-1 rounded-lg text-xs font-semibold text-red-400 hover:text-white hover:bg-red-500/80 border border-red-500/30 hover:border-red-500 transition-all">
+                    Delete
+                </button>
+            </form>
+        </div>
     </td>
 </tr>
 {% else %}

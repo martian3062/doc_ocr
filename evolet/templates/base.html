@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" x-data="appShell()" :class="{ 'dark': darkMode }" x-init="initApp()">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,30 +10,32 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        pastel: {
-                            purple: '#C4B5FD',
-                            blue: '#BFDBFE',
-                            indigo: '#A5B4FC',
-                            violet: '#DDD6FE',
-                            lavender: '#E9D5FF',
-                            pink: '#F5D0FE',
-                            white: '#F8FAFC',
-                        },
                         brand: {
-                            50: '#F5F3FF',
-                            100: '#EDE9FE',
-                            200: '#DDD6FE',
-                            300: '#C4B5FD',
-                            400: '#A78BFA',
-                            500: '#8B5CF6',
-                            600: '#7C3AED',
-                            700: '#6D28D9',
-                            800: '#5B21B6',
-                            900: '#4C1D95',
+                            50: '#F5F3FF', 100: '#EDE9FE', 200: '#DDD6FE',
+                            300: '#C4B5FD', 400: '#A78BFA', 500: '#8B5CF6',
+                            600: '#7C3AED', 700: '#6D28D9', 800: '#5B21B6', 900: '#4C1D95',
                         }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+                        display: ['Space Grotesk', 'ui-sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out',
+                        'slide-up': 'slideUp 0.4s ease-out',
+                        'slide-in-right': 'slideInRight 0.35s ease-out',
+                        'shimmer': 'shimmer 2s infinite',
+                        'pulse-soft': 'pulse 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+                        slideUp: { from: { opacity: '0', transform: 'translateY(12px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+                        slideInRight: { from: { opacity: '0', transform: 'translateX(24px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
+                        shimmer: { '0%': { backgroundPosition: '-200% center' }, '100%': { backgroundPosition: '200% center' } },
                     }
                 }
             }
@@ -43,8 +45,8 @@
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
 
-    <script src="{{ static('js/app.js') }}"></script>
-
+    <!-- Alpine.js Collapse plugin -->
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
@@ -52,208 +54,306 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
+    <!-- App JS (Alpine data definitions — must load before Alpine defers) -->
+    <script src="{{ static('js/app.js') }}"></script>
+
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
         * { font-family: 'Inter', sans-serif; }
         h1, h2, h3, .brand-font { font-family: 'Space Grotesk', sans-serif; }
 
+        /* ── Light mode base ── */
         body {
-            /* Dynamic purple-white-blue pastel background */
-            background: linear-gradient(135deg, #FaF5FF 0%, #F5F3FF 25%, #EFF6FF 50%, #F0F9FF 75%, #FAF5FF 100%);
+            background: linear-gradient(135deg, #FAF5FF 0%, #F5F3FF 25%, #EFF6FF 55%, #F0F9FF 80%, #FAF5FF 100%);
             background-size: 400% 400%;
-            animation: gradientBG 15s ease infinite;
+            animation: gradientBG 18s ease infinite;
             min-height: 100vh;
-            color: #334155; /* Slate 700 for better readability on light mode */
+            color: #1e293b;
+        }
+
+        /* ── Dark mode base ── */
+        .dark body, html.dark {
+            background: linear-gradient(135deg, #0f0a1e 0%, #12111f 35%, #0d1424 65%, #0f0e1e 100%);
+            color: #e2e8f0;
+        }
+        .dark body {
+            background: #0f0e1e;
+            animation: none;
         }
 
         @keyframes gradientBG {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
 
-        /* Light mode glassmorphism */
+        /* ── Glass cards ── */
         .glass {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.9);
-            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.05);
+            background: rgba(255,255,255,0.68);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(255,255,255,0.85);
+            box-shadow: 0 2px 16px rgba(139,92,246,0.06);
+        }
+        .dark .glass {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 2px 16px rgba(0,0,0,0.4);
         }
 
         .glass-strong {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(30px);
-            -webkit-backdrop-filter: blur(30px);
-            border: 1px solid rgba(255, 255, 255, 1);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            background: rgba(255,255,255,0.88);
+            backdrop-filter: blur(28px);
+            -webkit-backdrop-filter: blur(28px);
+            border: 1px solid rgba(255,255,255,1);
+            box-shadow: 0 1px 0 rgba(139,92,246,0.08);
+        }
+        .dark .glass-strong {
+            background: rgba(15,14,30,0.92);
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            box-shadow: none;
         }
 
-        .glow {
-            box-shadow: 0 0 40px rgba(139, 92, 246, 0.15), 0 0 80px rgba(167, 139, 250, 0.1);
-        }
+        /* ── Glow helpers ── */
+        .glow-purple { box-shadow: 0 4px 28px rgba(139,92,246,0.12); }
+        .glow-blue   { box-shadow: 0 4px 28px rgba(96,165,250,0.12); }
+        .dark .glow-purple { box-shadow: 0 4px 28px rgba(139,92,246,0.22); }
+        .dark .glow-blue   { box-shadow: 0 4px 28px rgba(96,165,250,0.18); }
 
-        .glow-purple {
-            box-shadow: 0 4px 30px rgba(139, 92, 246, 0.15);
-        }
-
-        .glow-blue {
-            box-shadow: 0 4px 30px rgba(96, 165, 250, 0.15);
-        }
-
+        /* ── Gradient text ── */
         .gradient-text {
             background: linear-gradient(135deg, #7C3AED 0%, #4F46E5 40%, #0284C7 70%, #9333EA 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-
         .gradient-text-bold {
-            background: linear-gradient(135deg, #6D28D9 0%, #4338CA 40%, #0369A1 100%);
+            background: linear-gradient(135deg, #6D28D9 0%, #4338CA 50%, #0369A1 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
 
+        /* ── Animations ── */
         @keyframes slideUp {
-            from { opacity: 0; transform: translateY(16px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(24px); }
+            to   { opacity: 1; transform: translateX(0); }
         }
-
         @keyframes shimmer {
-            0% { background-position: -200% center; }
-            100% { background-position: 200% center; }
+            0%   { background-position: -200% center; }
+            100% { background-position:  200% center; }
         }
 
-        .slide-up { animation: slideUp 0.5s ease-out; }
-        .fade-in { animation: fadeIn 0.4s ease-out; }
+        .slide-up { animation: slideUp 0.4s ease-out both; }
+        .slide-in-right { animation: slideInRight 0.35s ease-out both; }
 
         .shimmer {
-            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%);
             background-size: 200% 100%;
-            animation: shimmer 3s infinite;
+            animation: shimmer 2.2s infinite;
+        }
+        .dark .shimmer {
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+            background-size: 200% 100%;
         }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.02); }
-        ::-webkit-scrollbar-thumb { background: rgba(167, 139, 250, 0.4); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.6); }
+        /* ── Skeleton loader ── */
+        .skeleton {
+            background: linear-gradient(90deg, rgba(203,213,225,0.5) 25%, rgba(226,232,240,0.7) 50%, rgba(203,213,225,0.5) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.4s infinite;
+            border-radius: 0.5rem;
+        }
+        .dark .skeleton {
+            background: linear-gradient(90deg, rgba(51,65,85,0.5) 25%, rgba(71,85,105,0.5) 50%, rgba(51,65,85,0.5) 75%);
+            background-size: 200% 100%;
+        }
 
-        /* Selection */
-        ::selection { background: rgba(167, 139, 250, 0.3); color: #4C1D95; }
-
+        /* ── Nav link ── */
         .nav-link {
             position: relative;
-            transition: all 0.3s ease;
-            color: #475569; /* slate-600 */
+            transition: color 0.25s ease;
+            color: #475569;
         }
+        .dark .nav-link { color: #94a3b8; }
         .nav-link::after {
             content: '';
             position: absolute;
-            bottom: -2px;
-            left: 50%;
-            width: 0;
-            height: 2px;
+            bottom: -2px; left: 50%;
+            width: 0; height: 2px;
             background: linear-gradient(90deg, #A78BFA, #93C5FD);
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
             transform: translateX(-50%);
             border-radius: 1px;
         }
-        .nav-link:hover::after { width: 100%; }
-        .nav-link:hover { color: #6D28D9; }
+        .nav-link:hover::after, .nav-link.active::after { width: 80%; }
+        .nav-link:hover, .nav-link.active { color: #6D28D9; }
+        .dark .nav-link:hover, .dark .nav-link.active { color: #a78bfa; }
 
-        .card-hover {
-            transition: all 0.3s ease;
-        }
+        /* ── Card hover ── */
+        .card-hover { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
         .card-hover:hover {
             transform: translateY(-2px);
-            box-shadow: 0 12px 32px rgba(139, 92, 246, 0.12);
-            border-color: rgba(167, 139, 250, 0.5);
+            box-shadow: 0 12px 30px rgba(139,92,246,0.1);
         }
-        
-        /* Typography overrides for light mode */
-        .text-white { color: #1e293b !important; } /* override white text to slate-800 */
-        .text-gray-400 { color: #64748b !important; } /* override gray-400 to slate-500 */
-        .text-gray-300 { color: #475569 !important; } /* override gray-300 to slate-600 */
-        
-        /* Table overrides */
-        .border-white\/10 { border-color: rgba(139, 92, 246, 0.1) !important; }
-        .border-white\/5 { border-color: rgba(139, 92, 246, 0.05) !important; }
-        .divide-white\/5 > :not([hidden]) ~ :not([hidden]) {
-            border-color: rgba(139, 92, 246, 0.05) !important;
+        .dark .card-hover:hover {
+            box-shadow: 0 12px 30px rgba(139,92,246,0.2);
         }
-        .bg-white\/5 { background-color: rgba(255, 255, 255, 0.6) !important; }
-        .hover\:bg-white\/5:hover { background-color: rgba(255, 255, 255, 0.9) !important; }
-        .hover\:bg-purple-500\/5:hover { background-color: rgba(167, 139, 250, 0.08) !important; }
 
-        /* Specifically target icons inside the gradient backgrounds so they stay white */
-        .bg-gradient-to-br .text-white, 
-        .bg-gradient-to-r .text-white,
-        .btn-text-white { color: #ffffff !important; }
-        
-        /* Target the 'active' pill buttons */
-        .bg-purple-500\/10.text-purple-300 { color: #6D28D9 !important; background-color: rgba(139, 92, 246, 0.15) !important;}
-        .bg-blue-500\/10.text-blue-300 { color: #1D4ED8 !important; background-color: rgba(59, 130, 246, 0.15) !important;}
-        .bg-indigo-500\/10.text-indigo-300 { color: #4338CA !important; background-color: rgba(99, 102, 241, 0.15) !important;}
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(167,139,250,0.35); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.55); }
+
+        /* ── Selection ── */
+        ::selection { background: rgba(167,139,250,0.28); color: #4C1D95; }
+
+        /* ── Step tracker ── */
+        .step-done   { background: #10b981; border-color: #10b981; }
+        .step-active { background: #8b5cf6; border-color: #8b5cf6; animation: pulse 1.5s ease-in-out infinite; }
+        .step-wait   { background: transparent; border-color: #cbd5e1; }
+        .dark .step-wait { border-color: #334155; }
+
+        /* ── Pipeline status colors light/dark ── */
+        .status-completed { color: #059669; background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.25); }
+        .status-failed    { color: #dc2626; background: rgba(239,68,68,0.1);  border-color: rgba(239,68,68,0.25); }
+        .status-active    { color: #7c3aed; background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.25); }
+        .dark .status-completed { color: #34d399; }
+        .dark .status-failed    { color: #f87171; }
+        .dark .status-active    { color: #a78bfa; }
+
+        /* ── Toast ── */
+        .toast-enter { animation: slideInRight 0.35s ease-out both; }
+        .toast-leave { animation: fadeOut 0.25s ease-in both; }
+        @keyframes fadeOut { to { opacity: 0; transform: translateX(12px); } }
+
+        /* ── JSON viewer ── */
+        .json-key   { color: #7c3aed; }
+        .json-str   { color: #059669; }
+        .json-num   { color: #d97706; }
+        .json-bool  { color: #2563eb; }
+        .json-null  { color: #94a3b8; }
+        .dark .json-key  { color: #c084fc; }
+        .dark .json-str  { color: #34d399; }
+        .dark .json-num  { color: #fbbf24; }
+        .dark .json-bool { color: #60a5fa; }
+
+        /* ── Print ── */
+        @media print {
+            nav, footer, .no-print { display: none !important; }
+            body { background: white; }
+        }
     </style>
 </head>
-<body class="antialiased">
+<body class="antialiased" x-cloak>
 
-    <!-- Ambient background orbs -->
-    <div class="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-        <div class="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-purple-300/40 blur-[100px] animate-[pulse_8s_ease-in-out_infinite]"></div>
-        <div class="absolute top-1/3 -left-20 w-80 h-80 rounded-full bg-blue-300/40 blur-[100px] animate-[pulse_10s_ease-in-out_infinite]"></div>
-        <div class="absolute bottom-0 right-1/4 w-72 h-72 rounded-full bg-pink-300/30 blur-[100px] animate-[pulse_12s_ease-in-out_infinite]"></div>
+    <!-- Ambient orbs (light only) -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none -z-10 dark:opacity-20" aria-hidden="true">
+        <div class="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-purple-300/35 blur-[110px] animate-[pulse_9s_ease-in-out_infinite]"></div>
+        <div class="absolute top-1/3 -left-20 w-80 h-80 rounded-full bg-blue-300/35 blur-[110px] animate-[pulse_11s_ease-in-out_infinite]"></div>
+        <div class="absolute bottom-0 right-1/4 w-64 h-64 rounded-full bg-pink-300/25 blur-[90px] animate-[pulse_13s_ease-in-out_infinite]"></div>
     </div>
 
-    <!-- Navigation -->
-    <nav class="sticky top-0 z-50 glass-strong border-b border-white/10">
-        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-            <a href="{{ url('pipeline:dashboard') }}" class="flex items-center gap-3 group">
-                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-shadow">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <!-- ── Navigation ── -->
+    <nav class="sticky top-0 z-50 glass-strong border-b border-white/10 dark:border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+
+            <!-- Logo -->
+            <a href="{{ url('pipeline:dashboard') }}" class="flex items-center gap-2.5 shrink-0 group">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-md shadow-purple-500/25 group-hover:shadow-purple-500/45 transition-shadow">
+                    <svg class="w-4.5 h-4.5 text-white" style="width:18px;height:18px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
                 </div>
-                <span class="text-lg font-bold gradient-text-bold brand-font">Evolet</span>
+                <span class="text-base font-bold gradient-text-bold brand-font hidden sm:block">Evolet</span>
             </a>
 
-            <div class="flex items-center gap-1">
-                <a href="{{ url('pipeline:dashboard') }}" class="nav-link px-3 py-2 text-sm text-gray-300 rounded-lg hover:bg-white/5">Dashboard</a>
-                <a href="{{ url('pipeline:patient_list') }}" class="nav-link px-3 py-2 text-sm text-gray-300 rounded-lg hover:bg-white/5">Patients</a>
-                <a href="{{ url('pipeline:folder_browser') }}" class="nav-link px-3 py-2 text-sm text-gray-300 rounded-lg hover:bg-white/5">Folders</a>
-                <a href="{{ url('pipeline:upload') }}" class="nav-link px-3 py-2 text-sm text-gray-300 rounded-lg hover:bg-white/5">Upload</a>
-                <a href="{{ url('pipeline:run_list') }}" class="nav-link px-3 py-2 text-sm text-gray-300 rounded-lg hover:bg-white/5">Runs</a>
-                <a href="{{ url('pipeline:qc_summary') }}" class="nav-link px-3 py-2 text-sm text-gray-300 rounded-lg hover:bg-white/5">QC</a>
+            <!-- Nav links -->
+            <div class="flex items-center gap-0.5 overflow-x-auto scrollbar-none">
+                <a href="{{ url('pipeline:dashboard') }}"     class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Dashboard</a>
+                <a href="{{ url('pipeline:patient_list') }}"  class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Patients</a>
+                <a href="{{ url('pipeline:folder_browser') }}" class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Folders</a>
+                <a href="{{ url('pipeline:upload') }}"        class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Upload</a>
+                <a href="{{ url('pipeline:run_list') }}"      class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Runs</a>
+                <a href="{{ url('pipeline:qc_summary') }}"    class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">QC</a>
             </div>
 
-            <div hx-get="{{ url('pipeline:api_gpu_status') }}" hx-trigger="every 10s" hx-swap="innerHTML" class="flex items-center">
-                {% if gpu is defined and gpu.available %}
-                <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/10">
-                    <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
-                    <span class="text-xs text-purple-300 font-medium">GPU</span>
+            <!-- Right side: GPU + dark toggle -->
+            <div class="flex items-center gap-2 shrink-0">
+                <!-- GPU badge -->
+                <div id="gpu-badge"
+                     hx-get="{{ url('pipeline:api_gpu_status') }}"
+                     hx-trigger="every 12s"
+                     hx-swap="innerHTML">
+                    {% if gpu is defined and gpu.available %}
+                    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20">
+                        <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                        <span class="text-xs text-purple-600 dark:text-purple-300 font-medium">GPU</span>
+                    </div>
+                    {% else %}
+                    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/8">
+                        <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                        <span class="text-xs text-slate-500 dark:text-slate-400">CPU</span>
+                    </div>
+                    {% endif %}
                 </div>
-                {% else %}
-                <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5">
-                    <span class="w-2 h-2 rounded-full bg-gray-500"></span>
-                    <span class="text-xs text-gray-400">CPU mode</span>
-                </div>
-                {% endif %}
+
+                <!-- Dark mode toggle -->
+                <button @click="toggleDark()"
+                        class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/8 hover:bg-slate-200 dark:hover:bg-white/12 border border-slate-200 dark:border-white/8 transition-colors"
+                        :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
+                    <svg x-show="!darkMode" class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                    </svg>
+                    <svg x-show="darkMode" class="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                    </svg>
+                </button>
             </div>
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-6 py-8">
+    <!-- ── Toast container ── -->
+    <div x-data
+         class="fixed top-4 right-4 z-[100] flex flex-col gap-2 w-80 pointer-events-none"
+         aria-live="polite">
+        <template x-for="toast in $store.toasts.items" :key="toast.id">
+            <div class="toast-enter pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium"
+                 :class="{
+                     'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200': toast.type === 'info',
+                     'bg-emerald-50 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200': toast.type === 'success',
+                     'bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200': toast.type === 'error',
+                     'bg-amber-50 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200': toast.type === 'warning',
+                 }">
+                <!-- Icon -->
+                <span class="mt-0.5 shrink-0">
+                    <svg x-show="toast.type==='success'" class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                    <svg x-show="toast.type==='error'" class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                    <svg x-show="toast.type==='warning'" class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                    <svg x-show="toast.type==='info'" class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </span>
+                <span x-text="toast.message" class="flex-1 leading-snug"></span>
+                <button @click="$store.toasts.remove(toast.id)" class="shrink-0 opacity-50 hover:opacity-100 transition-opacity">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <!-- ── Main Content ── -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {% if messages %}
         <div class="mb-6 space-y-2">
             {% for message in messages %}
-            <div class="rounded-xl px-4 py-3 text-sm border {% if message.tags == 'error' %}bg-red-50 text-red-800 border-red-200{% elif message.tags == 'success' %}bg-emerald-50 text-emerald-800 border-emerald-200{% else %}bg-slate-50 text-slate-800 border-slate-200{% endif %}">
+            <div class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm border
+                {% if message.tags == 'error' %}bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800
+                {% elif message.tags == 'success' %}bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800
+                {% else %}bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700{% endif %}">
                 {{ message }}
             </div>
             {% endfor %}
@@ -262,13 +362,61 @@
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Footer -->
-    <footer class="mt-16 border-t border-white/5 py-6">
-        <div class="max-w-7xl mx-auto px-6 flex items-center justify-between">
-            <p class="text-xs text-gray-500">Evolet Pipeline — 4basecare TMH OCR</p>
-            <p class="text-xs text-gray-600">Qwen 2.5 · Lossless-first + LLM rescue</p>
+    <!-- ── Footer ── -->
+    <footer class="mt-16 border-t border-slate-200/70 dark:border-white/5 py-5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-xs text-slate-400 dark:text-slate-500">Evolet Pipeline — 4basecare TMH OCR</p>
+            <div class="flex items-center gap-4">
+                <p class="text-xs text-slate-400 dark:text-slate-500">Qwen 2.5 · Lossless-first + LLM rescue</p>
+                <kbd class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-white/8 font-mono">
+                    <span class="text-[9px]">⌘</span>K search
+                </kbd>
+            </div>
         </div>
     </footer>
+
+    <!-- ── Command spotlight (⌘K / /) ── -->
+    <div x-data
+         x-show="$store.spotlight.open"
+         x-cloak
+         @keydown.escape.window="$store.spotlight.close()"
+         class="fixed inset-0 z-[200] flex items-start justify-center pt-24 px-4"
+         style="display:none">
+        <div class="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" @click="$store.spotlight.close()"></div>
+        <div class="relative w-full max-w-lg glass dark:bg-slate-900/95 rounded-2xl shadow-2xl border border-white/60 dark:border-white/10 overflow-hidden slide-up">
+            <div class="flex items-center gap-3 px-5 py-4 border-b border-slate-200/50 dark:border-white/8">
+                <svg class="w-5 h-5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input id="spotlight-input" type="text" placeholder="Search patients, runs, pages…"
+                       class="flex-1 bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 text-sm focus:outline-none"
+                       @input="$store.spotlight.query = $event.target.value"
+                       :value="$store.spotlight.query">
+                <kbd class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/8 text-slate-400 font-mono border border-slate-200 dark:border-white/10">ESC</kbd>
+            </div>
+            <div class="py-2 max-h-72 overflow-y-auto">
+                <p class="px-5 py-3 text-xs text-slate-400 dark:text-slate-500">Quick navigation</p>
+                <a href="{{ url('pipeline:dashboard') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
+                    <svg class="w-4 h-4 text-purple-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                    Dashboard
+                </a>
+                <a href="{{ url('pipeline:patient_list') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
+                    <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    Patients
+                </a>
+                <a href="{{ url('pipeline:upload') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
+                    <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    Upload Files
+                </a>
+                <a href="{{ url('pipeline:run_list') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
+                    <svg class="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                    Pipeline Runs
+                </a>
+                <a href="{{ url('pipeline:qc_summary') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
+                    <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    QC Summary
+                </a>
+            </div>
+        </div>
+    </div>
 
     {% block extra_scripts %}{% endblock %}
 </body>

@@ -11,11 +11,12 @@ whitenoise>=6.7
 # ── PDF & OCR ────────────────────────────────────────────────
 pymupdf>=1.24               # PDF text extraction
 pillow>=10.4                # Image processing
-python-doctr[torch]>=1.0    # OCR engine
+python-doctr[torch]>=1.0    # OCR engine (whole-page scanned PDFs)
+easyocr>=1.7                # Embedded image OCR (images inside text PDFs)
 opencv-python-headless>=4.10 # Image processing utilities
 
 # ── LLM / GPU Inference ─────────────────────────────────────
-torch>=2.2                  # PyTorch
+# torch is installed separately in Dockerfile from CUDA wheel index
 transformers>=4.44          # HuggingFace transformers
 accelerate>=0.34            # Multi-GPU support
 bitsandbytes>=0.43          # 4-bit quantization
@@ -31,3 +32,7 @@ python-dateutil>=2.9        # Date parsing
 pydantic>=2.9               # Data validation
 json-repair>=0.30           # Fix malformed JSON from LLM
 tqdm>=4.66                  # Progress bars
+
+# ── Text correction (new) ────────────────────────────────────────────────────
+symspellpy>=6.7             # Fast spell correction (symmetric-delete algorithm)
+                            # Optional — pipeline degrades gracefully if absent

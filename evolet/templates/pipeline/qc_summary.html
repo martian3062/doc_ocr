@@ -2,134 +2,163 @@
 {% block title %}QC Summary{% endblock %}
 
 {% block content %}
-<div class="space-y-8 slide-up">
+<div class="space-y-6 slide-up" x-data="{ filterFlagged: false, filterMissing: '' }">
+
     <!-- Header -->
-    <div class="text-center py-6">
-        <h1 class="text-4xl md:text-5xl font-extrabold text-white brand-font mb-3">Quality Control</h1>
-        <p class="text-gray-400">Extraction quality overview</p>
-    </div>
-
-    <!-- Summary Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="glass rounded-2xl p-6 glow-purple border border-purple-500/20 text-center card-hover">
-            <div class="text-3xl font-bold text-white brand-font mb-1">{{ summary.total_patients|default(0) }}</div>
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Patients</p>
+    <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-extrabold text-slate-800 dark:text-slate-100 brand-font">Quality Control</h1>
+            <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Extraction quality overview across all patients</p>
         </div>
-        <div class="glass rounded-2xl p-6 glow-blue border border-blue-500/20 text-center card-hover">
-            <div class="text-3xl font-bold text-blue-400 brand-font mb-1">{{ summary.total_mentions|default(0) }}</div>
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Total Mentions</p>
-        </div>
-        <div class="glass rounded-2xl p-6 border border-indigo-500/20 text-center card-hover">
-            <div class="text-3xl font-bold text-indigo-400 brand-font mb-1">{{ "%.1f"|format(summary.avg_mentions|default(0)) }}</div>
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Avg per Patient</p>
-        </div>
-        <div class="glass rounded-2xl p-6 border border-emerald-500/20 text-center card-hover">
-            <div class="text-3xl font-bold text-emerald-400 brand-font mb-1">{{ summary.patients_with_diagnosis|default(0) }}</div>
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">With Diagnosis</p>
-        </div>
-        <div class="glass rounded-2xl p-6 border border-red-500/20 text-center card-hover md:col-start-4">
-            <div class="text-3xl font-bold text-red-400 brand-font mb-1">{{ summary.total_review_flags|default(0) }}</div>
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Flagged</p>
+        <!-- Filters -->
+        <div class="flex items-center gap-2 flex-wrap">
+            <button @click="filterFlagged = !filterFlagged"
+                    class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all"
+                    :class="filterFlagged
+                        ? 'bg-red-500 text-white border-red-500 shadow-md shadow-red-500/20'
+                        : 'bg-white dark:bg-white/5 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:border-red-300 dark:hover:border-red-500/30'">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Flagged only
+            </button>
+            <select x-model="filterMissing"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold border bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-400/30">
+                <option value="">All patients</option>
+                <option value="diagnosis">Missing Diagnosis</option>
+                <option value="medication">Missing Medication</option>
+                <option value="imaging">Missing Imaging</option>
+                <option value="pathology">Missing Pathology</option>
+            </select>
         </div>
     </div>
 
-    <!-- Coverage Bars -->
-    <div class="glass rounded-2xl p-8 border border-white/5">
-        <h2 class="text-xl font-bold text-white brand-font mb-6 flex items-center gap-3">
-            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+    <!-- ── Summary Stats ── -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div class="glass rounded-2xl p-5 glow-purple border border-purple-200/30 dark:border-purple-500/15 text-center card-hover">
+            <div class="text-3xl font-extrabold text-slate-800 dark:text-slate-100 brand-font mb-1">{{ summary.total_patients|default(0) }}</div>
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Patients</p>
+        </div>
+        <div class="glass rounded-2xl p-5 glow-blue border border-blue-200/30 dark:border-blue-500/15 text-center card-hover">
+            <div class="text-3xl font-extrabold text-blue-600 dark:text-blue-400 brand-font mb-1">{{ summary.total_mentions|default(0) }}</div>
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Mentions</p>
+        </div>
+        <div class="glass rounded-2xl p-5 border border-indigo-200/30 dark:border-indigo-500/15 text-center card-hover">
+            <div class="text-3xl font-extrabold text-indigo-600 dark:text-indigo-400 brand-font mb-1">{{ "%.1f"|format(summary.avg_mentions|default(0)) }}</div>
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Avg / Patient</p>
+        </div>
+        <div class="glass rounded-2xl p-5 border border-emerald-200/30 dark:border-emerald-500/15 text-center card-hover">
+            <div class="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 brand-font mb-1">{{ summary.patients_with_diagnosis|default(0) }}</div>
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">With Diagnosis</p>
+        </div>
+        <div class="glass rounded-2xl p-5 border border-red-200/30 dark:border-red-500/15 text-center card-hover">
+            <div class="text-3xl font-extrabold text-red-600 dark:text-red-400 brand-font mb-1">{{ summary.total_review_flags|default(0) }}</div>
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Flagged</p>
+        </div>
+    </div>
+
+    <!-- ── Coverage Bars ── -->
+    <div class="glass rounded-2xl p-6 border border-slate-200/30 dark:border-white/5">
+        <h2 class="text-base font-bold text-slate-700 dark:text-slate-200 brand-font mb-5 flex items-center gap-2">
+            <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
             Category Coverage
         </h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- Diagnosis -->
-            <div class="bg-white/40 rounded-xl p-5 border border-white/5">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-400">Diagnosis</span>
-                    <span class="text-sm font-bold text-white">{{ summary.patients_with_diagnosis|default(0) }}/{{ summary.total_patients|default(0) }}</span>
-                </div>
-                {% set diag_pct = (summary.patients_with_diagnosis|default(0) / summary.total_patients|default(1)) * 100 %}
-                <div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                    <div class="h-1.5 rounded-full bg-gradient-to-r from-purple-400 to-blue-400 shadow-[0_0_8px_rgba(167,139,250,0.5)]" style="width: {{ diag_pct }}%"></div>
-                </div>
-            </div>
 
-            <!-- Medication -->
-            <div class="bg-white/40 rounded-xl p-5 border border-white/5">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-400">Medication</span>
-                    <span class="text-sm font-bold text-white">{{ summary.patients_with_medication|default(0) }}/{{ summary.total_patients|default(0) }}</span>
-                </div>
-                {% set med_pct = (summary.patients_with_medication|default(0) / summary.total_patients|default(1)) * 100 %}
-                <div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                    <div class="h-1.5 rounded-full bg-gradient-to-r from-blue-400 to-cyan-400 shadow-[0_0_8px_rgba(96,165,250,0.5)]" style="width: {{ med_pct }}%"></div>
-                </div>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {% set coverages = [
+                ('Diagnosis',  summary.patients_with_diagnosis|default(0),  'from-purple-400 to-violet-500',  'text-purple-600 dark:text-purple-400'),
+                ('Medication', summary.patients_with_medication|default(0), 'from-blue-400 to-cyan-500',      'text-blue-600 dark:text-blue-400'),
+                ('Imaging',    summary.patients_with_imaging|default(0),    'from-teal-400 to-emerald-500',   'text-teal-600 dark:text-teal-400'),
+                ('Pathology',  summary.patients_with_pathology|default(0),  'from-indigo-400 to-purple-500',  'text-indigo-600 dark:text-indigo-400'),
+            ] %}
 
-            <!-- Imaging -->
-            <div class="bg-white/40 rounded-xl p-5 border border-white/5">
+            {% for label, count, grad, txt in coverages %}
+            {% set total = summary.total_patients|default(1) %}
+            {% set pct = ((count / total) * 100)|round|int %}
+            <div class="rounded-xl p-4 bg-slate-50/60 dark:bg-white/3 border border-slate-200/50 dark:border-white/8">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-400">Imaging</span>
-                    <span class="text-sm font-bold text-white">{{ summary.patients_with_imaging|default(0) }}/{{ summary.total_patients|default(0) }}</span>
+                    <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">{{ label }}</span>
+                    <div class="flex items-center gap-1.5">
+                        {% if count < total %}
+                        <span class="text-[10px] font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800">
+                            ❌ {{ total - count }} missing
+                        </span>
+                        {% else %}
+                        <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">✓ Complete</span>
+                        {% endif %}
+                    </div>
                 </div>
-                {% set img_pct = (summary.patients_with_imaging|default(0) / summary.total_patients|default(1)) * 100 %}
-                <div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                    <div class="h-1.5 rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400 shadow-[0_0_8px_rgba(45,212,191,0.5)]" style="width: {{ img_pct }}%"></div>
+                <div class="flex items-center gap-3">
+                    <div class="flex-1 bg-slate-200 dark:bg-white/8 rounded-full h-2 overflow-hidden">
+                        <div class="h-2 rounded-full bg-gradient-to-r {{ grad }} transition-all duration-700"
+                             style="width: {{ pct }}%"></div>
+                    </div>
+                    <span class="text-xs font-bold {{ txt }} tabular-nums w-10 text-right">{{ pct }}%</span>
                 </div>
+                <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{{ count }} / {{ total }} patients</p>
             </div>
-
-            <!-- Pathology -->
-            <div class="bg-white/40 rounded-xl p-5 border border-white/5">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-400">Pathology</span>
-                    <span class="text-sm font-bold text-white">{{ summary.patients_with_pathology|default(0) }}/{{ summary.total_patients|default(0) }}</span>
-                </div>
-                {% set path_pct = (summary.patients_with_pathology|default(0) / summary.total_patients|default(1)) * 100 %}
-                <div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                    <div class="h-1.5 rounded-full bg-gradient-to-r from-indigo-400 to-purple-400 shadow-[0_0_8px_rgba(129,140,248,0.5)]" style="width: {{ path_pct }}%"></div>
-                </div>
-            </div>
+            {% endfor %}
         </div>
     </div>
 
-    <!-- Data Table -->
-    <div class="glass rounded-2xl border border-white/5 overflow-hidden shadow-xl shadow-purple-900/10">
+    <!-- ── Data Table ── -->
+    <div class="glass rounded-2xl border border-slate-200/30 dark:border-white/5 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200/40 dark:border-white/5 bg-slate-50/60 dark:bg-white/3 flex items-center justify-between">
+            <h2 class="text-sm font-bold text-slate-700 dark:text-slate-200 brand-font">Patient Records</h2>
+            <span class="text-xs text-slate-400 dark:text-slate-500" x-text="filterFlagged ? 'Showing flagged only' : (filterMissing ? `Missing ${filterMissing}` : 'All patients')"></span>
+        </div>
+
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
-                    <tr class="border-b border-white/10 text-xs text-gray-400 uppercase tracking-wider bg-white/5">
-                        <th class="py-4 px-6 font-semibold">Patient</th>
-                        <th class="py-4 px-6 font-semibold w-24">Pages</th>
-                        <th class="py-4 px-6 font-semibold w-24">Notes</th>
-                        <th class="py-4 px-6 font-semibold w-24">Mentions</th>
-                        <th class="py-4 px-6 font-semibold w-24">Categories</th>
-                        <th class="py-4 px-6 font-semibold text-right w-24">Flags</th>
+                    <tr class="border-b border-slate-200/40 dark:border-white/8 text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider bg-slate-50/60 dark:bg-white/3">
+                        <th class="py-3 px-5 font-semibold">Patient</th>
+                        <th class="py-3 px-5 font-semibold text-center">Pages</th>
+                        <th class="py-3 px-5 font-semibold text-center">Notes</th>
+                        <th class="py-3 px-5 font-semibold text-center">Mentions</th>
+                        <th class="py-3 px-5 font-semibold text-center">Categories</th>
+                        <th class="py-3 px-5 font-semibold text-center">Missing</th>
+                        <th class="py-3 px-5 font-semibold text-right">Flags</th>
                     </tr>
                 </thead>
-                <tbody class="text-sm text-gray-300 divide-y divide-white/5">
+                <tbody class="text-sm divide-y divide-slate-100 dark:divide-white/5">
                     {% for row in qc_rows %}
-                    <tr class="hover:bg-purple-500/5 transition-colors">
-                        <td class="py-3 px-6 font-semibold text-white">{{ row.patient_code }}</td>
-                        <td class="py-3 px-6">{{ row.page_count }}</td>
-                        <td class="py-3 px-6">{{ row.note_count }}</td>
-                        <td class="py-3 px-6">
+                    <tr class="hover:bg-purple-50/50 dark:hover:bg-white/3 transition-colors"
+                        x-show="(!filterFlagged || {{ row.review_flags }} > 0)"
+                        >
+                        <td class="py-3 px-5">
+                            <a href="{{ url('pipeline:patient_detail', patient_id=row.patient_code) }}"
+                               class="font-semibold text-slate-700 dark:text-slate-200 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+                                {{ row.patient_code }}
+                            </a>
+                        </td>
+                        <td class="py-3 px-5 text-center text-slate-500 dark:text-slate-400 tabular-nums">{{ row.page_count }}</td>
+                        <td class="py-3 px-5 text-center text-slate-500 dark:text-slate-400 tabular-nums">{{ row.note_count }}</td>
+                        <td class="py-3 px-5 text-center">
                             {% if row.mention_count > 0 %}
-                            <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-xs font-bold">{{ row.mention_count }}</span>
+                            <span class="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold border border-emerald-200 dark:border-emerald-500/20">{{ row.mention_count }}</span>
                             {% else %}
-                            <span class="text-gray-500">—</span>
+                            <span class="text-slate-300 dark:text-slate-600 text-xs">—</span>
                             {% endif %}
                         </td>
-                        <td class="py-3 px-6">{{ row.category_count }}</td>
-                        <td class="py-3 px-6 text-right">
+                        <td class="py-3 px-5 text-center text-slate-500 dark:text-slate-400 tabular-nums">{{ row.category_count }}</td>
+                        <td class="py-3 px-5 text-center">
+                            <div class="flex items-center justify-center gap-1 flex-wrap">
+                                {% if not row.has_diagnosis %}<span class="text-[10px] font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/15 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800/40" title="Missing diagnosis">Dx ❌</span>{% endif %}
+                                {% if not row.has_medication %}<span class="text-[10px] font-bold text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/15 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/40" title="Missing medication">Rx ❌</span>{% endif %}
+                                {% if row.has_diagnosis and row.has_medication %}<span class="text-[10px] text-emerald-500">✓</span>{% endif %}
+                            </div>
+                        </td>
+                        <td class="py-3 px-5 text-right">
                             {% if row.review_flags > 0 %}
-                            <span class="px-2 py-0.5 rounded bg-red-500/10 text-red-400 text-xs font-bold ring-1 ring-red-500/20">{{ row.review_flags }}</span>
+                            <span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-bold border border-red-200 dark:border-red-500/20">{{ row.review_flags }}</span>
                             {% else %}
-                            <span class="text-gray-600">—</span>
+                            <span class="text-slate-300 dark:text-slate-600 text-xs">—</span>
                             {% endif %}
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="py-12 text-center text-gray-500">
-                            No records found.
+                        <td colspan="7" class="py-12 text-center text-slate-400 dark:text-slate-500">
+                            No records found. Run the pipeline to populate QC data.
                         </td>
                     </tr>
                     {% endfor %}
@@ -137,5 +166,6 @@
             </table>
         </div>
     </div>
+
 </div>
 {% endblock %}

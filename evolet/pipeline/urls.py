@@ -17,11 +17,16 @@ urlpatterns = [
     path("patients/", views.patient_list, name="patient_list"),
     path("patients/<int:patient_id>/", views.patient_detail, name="patient_detail"),
 
+    # Delete
+    path("patients/<int:patient_id>/delete/", views.delete_patient, name="delete_patient"),
+    path("documents/<uuid:doc_id>/delete/", views.delete_document, name="delete_document"),
+
     # Pipeline Runs
     path("runs/", views.run_list, name="run_list"),
     path("runs/<uuid:run_id>/", views.run_detail, name="run_detail"),
     path("runs/start/", views.start_run, name="start_run"),
     path("runs/start-one/", views.start_run_one, name="start_run_one"),
+    path("runs/<uuid:run_id>/cancel/", views.cancel_run, name="cancel_run"),
 
     # QC
     path("qc/", views.qc_summary, name="qc_summary"),
@@ -30,7 +35,8 @@ urlpatterns = [
     path("download/patient/<int:patient_id>/json/", views.download_patient_json, name="download_patient_json"),
     path("download/run/<uuid:run_id>/zip/", views.download_run_zip, name="download_run_zip"),
 
-    # HTMX partials
+    # HTMX partials / API
     path("api/progress/<uuid:run_id>/", views.run_progress, name="run_progress"),
     path("api/gpu/", views.api_gpu_status, name="api_gpu_status"),
+    path("api/system/", views.api_system_info, name="api_system_info"),
 ]

@@ -1,0 +1,38 @@
+{#
+  Component: card.html
+  A reusable stat/info card shell.
+  Vars:
+    card_title   — string
+    card_value   — string or number
+    card_sub     — optional subtitle
+    card_icon    — optional SVG path d= string
+    card_color   — optional Tailwind color name: 'purple' | 'blue' | 'indigo' | 'emerald' | 'red'
+#}
+{% set color = card_color|default('purple') %}
+{% set color_map = {
+    'purple':  ('from-purple-500/15 to-violet-600/15', 'text-purple-600 dark:text-purple-400',  'border-purple-200/40 dark:border-purple-500/15'),
+    'blue':    ('from-blue-500/15 to-indigo-600/15',   'text-blue-600 dark:text-blue-400',       'border-blue-200/40 dark:border-blue-500/15'),
+    'indigo':  ('from-indigo-500/15 to-violet-600/15', 'text-indigo-600 dark:text-indigo-400',   'border-indigo-200/40 dark:border-indigo-500/15'),
+    'emerald': ('from-emerald-500/15 to-teal-600/15',  'text-emerald-600 dark:text-emerald-400', 'border-emerald-200/40 dark:border-emerald-500/15'),
+    'red':     ('from-red-500/15 to-rose-600/15',      'text-red-600 dark:text-red-400',         'border-red-200/40 dark:border-red-500/15'),
+} %}
+{% set grad, txt, bdr = color_map.get(color, color_map['purple']) %}
+
+<div class="glass rounded-2xl p-5 card-hover border {{ bdr }}">
+    <div class="flex items-center justify-between mb-3">
+        {% if card_icon %}
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br {{ grad }} flex items-center justify-center">
+            <svg class="w-5 h-5 {{ txt }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ card_icon }}"/>
+            </svg>
+        </div>
+        {% endif %}
+        {% if card_title %}
+        <span class="text-[10px] font-bold {{ txt }} bg-opacity-10 px-2 py-0.5 rounded-full uppercase tracking-wider">{{ card_title }}</span>
+        {% endif %}
+    </div>
+    <div class="text-3xl font-extrabold text-slate-800 dark:text-slate-100 brand-font">{{ card_value }}</div>
+    {% if card_sub %}
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ card_sub }}</p>
+    {% endif %}
+</div>

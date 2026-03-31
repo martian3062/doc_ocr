@@ -24,10 +24,12 @@ import re
 import hashlib
 import logging
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import fitz          # PyMuPDF
+import numpy as np
 import torch
 from PIL import Image
 
@@ -42,9 +44,18 @@ _WORD_RE     = re.compile(r"\b\w+\b")
 _WHITESPACE  = re.compile(r"[ \t]+")
 _MULTI_NL    = re.compile(r"\n{3,}")
 
-# ── OCR engine singleton ─────────────────────────────────────────────────────
+# ── OCR engine singletons ────────────────────────────────────────────────────
 # DocTR is heavy (~500 MB GPU); load it once and reuse across all pages.
 _ocr_engine: Optional[Any] = None
+
+# EasyOCR reader singleton — used for embedded image OCR.
+_easy_ocr_reader: Optional[Any] = None
+
+# Threading primitives — protect singleton initialisation and GPU access.
+# A single lock serialises both DocTR and EasyOCR GPU calls so only one
+# inference kernel runs at a time on a single-GPU server (prevents OOM).
+_gpu_lock  = threading.Lock()   # serialises DocTR + EasyOCR forward passes
+_init_lock = threading.Lock()   # prevents double-initialisation of singletons
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,27 +119,31 @@ def _init_ocr() -> Optional[Any]:
     precision (float16) for ~2× faster inference when CUDA is available.
 
     Returns the engine object, or None if import/load failed.
+    Thread-safe: uses a lock to prevent concurrent initialisation.
     """
     global _ocr_engine
     if _ocr_engine is not None:
         return _ocr_engine
 
-    try:
-        from doctr.models import ocr_predictor
-        engine = ocr_predictor(pretrained=True, assume_straight_pages=True)
+    with _init_lock:
+        if _ocr_engine is not None:   # double-checked locking
+            return _ocr_engine
+        try:
+            from doctr.models import ocr_predictor
+            engine = ocr_predictor(pretrained=True, assume_straight_pages=True)
 
-        if torch.cuda.is_available():
-            engine = engine.cuda().half()  # FP16 on GPU for 2× speed
-            logger.info("DocTR OCR engine loaded (GPU / fp16)")
-        else:
-            logger.info("DocTR OCR engine loaded (CPU)")
+            if torch.cuda.is_available():
+                engine = engine.cuda().half()  # FP16 on GPU for 2× speed
+                logger.info("DocTR OCR engine loaded (GPU / fp16)")
+            else:
+                logger.info("DocTR OCR engine loaded (CPU)")
 
-        engine.eval()
-        _ocr_engine = engine
+            engine.eval()
+            _ocr_engine = engine
 
-    except Exception as exc:
-        logger.warning("Failed to load DocTR OCR engine: %s", exc)
-        _ocr_engine = None
+        except Exception as exc:
+            logger.warning("Failed to load DocTR OCR engine: %s", exc)
+            _ocr_engine = None
 
     return _ocr_engine
 
@@ -173,12 +188,110 @@ def _ocr_images(image_paths: List[str]) -> List[str]:
     try:
         from doctr.io import DocumentFile
         doc    = DocumentFile.from_images(image_paths)
-        result = engine(doc).export()
+        with _gpu_lock:
+            result = engine(doc).export()
         pages  = result.get("pages", []) or []
         return [_doctr_page_to_text(p) for p in pages]
     except Exception as exc:
         logger.error("OCR batch failed: %s", exc)
         return [""] * len(image_paths)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EasyOCR engine — lazy singleton (embedded image OCR)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _init_easy_ocr() -> Optional[Any]:
+    """
+    Lazy-load the EasyOCR reader on first use.
+
+    EasyOCR handles a wider range of embedded-image document types than DocTR:
+    rotated text, mixed fonts, and low-contrast clinical images.  Loaded only
+    when USE_EMBEDDED_IMAGE_OCR is True and at least one embedded image meets
+    the minimum pixel-area threshold.
+    Thread-safe: uses a lock to prevent concurrent initialisation.
+    """
+    global _easy_ocr_reader
+    if _easy_ocr_reader is not None:
+        return _easy_ocr_reader
+
+    if not config.USE_EMBEDDED_IMAGE_OCR:
+        return None
+
+    with _init_lock:
+        if _easy_ocr_reader is not None:   # double-checked locking
+            return _easy_ocr_reader
+        try:
+            import easyocr
+            use_gpu = torch.cuda.is_available()
+            _easy_ocr_reader = easyocr.Reader(["en"], gpu=use_gpu, verbose=False)
+            logger.info("EasyOCR reader loaded (%s)", "GPU" if use_gpu else "CPU")
+        except Exception as exc:
+            logger.warning("Failed to load EasyOCR: %s", exc)
+            _easy_ocr_reader = None
+
+    return _easy_ocr_reader
+
+
+def _extract_embedded_image_text(fitz_doc, page_idx: int) -> str:
+    """
+    Extract text from images that are embedded inside a PDF page.
+
+    This is the *third* extraction path, complementing:
+      - Native text extraction   (digitally created PDFs)
+      - DocTR whole-page OCR     (fully scanned pages)
+
+    This path handles PDFs where clinical data (lab results, handwritten notes)
+    is stored as individual images EMBEDDED WITHIN an otherwise-text PDF.
+    DocTR doesn't touch these because the page itself passes the native-text
+    quality threshold — only the embedded sub-images are image-only.
+
+    Filtering
+    ---------
+    Images smaller than EMBEDDED_IMAGE_MIN_PIXELS (width×height) are skipped
+    to avoid OCR on logos, icons, and decorative elements.
+
+    Returns a single string containing all text found across every qualifying
+    image on the page, or "" if none found / EasyOCR unavailable.
+    """
+    if not config.USE_EMBEDDED_IMAGE_OCR:
+        return ""
+
+    reader = _init_easy_ocr()
+    if reader is None:
+        return ""
+
+    page       = fitz_doc[page_idx]
+    image_list = page.get_images(full=True)
+    if not image_list:
+        return ""
+
+    texts: List[str] = []
+    for img_info in image_list:
+        xref = img_info[0]
+        try:
+            base_image = fitz_doc.extract_image(xref)
+            img_bytes  = base_image["image"]
+            img_pil    = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            w, h       = img_pil.size
+
+            if w * h < config.EMBEDDED_IMAGE_MIN_PIXELS:
+                continue   # skip small decorative images
+
+            img_array = np.array(img_pil)
+            # detail=0 → plain text list (no bounding boxes); paragraph=True
+            # merges nearby words into lines for cleaner output
+            with _gpu_lock:
+                results   = reader.readtext(img_array, detail=0, paragraph=True)
+            page_text = " ".join(str(r) for r in results).strip()
+            if page_text:
+                texts.append(page_text)
+
+        except Exception as exc:
+            logger.debug("Embedded image OCR skipped (xref=%d): %s", xref, exc)
+            continue
+
+    return "\n".join(texts)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -334,6 +447,30 @@ def extract_pdf_pages(pdf_path: str) -> List[Dict[str, Any]]:
         # Remove temp path keys before returning (not part of public schema)
         for row in page_rows:
             row.pop("_tmp_image_path", None)
+
+        # ── Phase 3: Embedded image OCR ───────────────────────────────────
+        # Run EasyOCR on any images embedded WITHIN each PDF page.
+        # This captures clinical data stored as embedded image objects
+        # (e.g. lab-result scans inside an otherwise-text PDF) — a gap that
+        # neither native extraction nor DocTR whole-page OCR covers.
+        # Text is appended to the existing page text, not replaced.
+        if config.USE_EMBEDDED_IMAGE_OCR:
+            for row in page_rows:
+                img_text = normalize_text(
+                    _extract_embedded_image_text(doc, row["page_num"] - 1)
+                )
+                if img_text:
+                    combined = (
+                        (row["text"] + "\n\n" + img_text).strip()
+                        if row["text"] else img_text
+                    )
+                    row.update({
+                        "text":            combined,
+                        "char_count":      len(combined),
+                        "word_count":      word_count(combined),
+                        "alpha_ratio":     round(alpha_ratio(combined), 4),
+                        "selected_source": row["selected_source"] + "+img",
+                    })
 
     doc.close()
     return page_rows

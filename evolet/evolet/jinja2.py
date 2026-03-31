@@ -18,6 +18,8 @@ The environment() function is referenced in TEMPLATES[0]["OPTIONS"]["environment
 in settings.py.
 """
 
+import json
+
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.urls import reverse
@@ -82,5 +84,8 @@ def environment(**options) -> Environment:
         "csrf_token_func": _csrf_token,
         "csrf_input_func": _csrf_input,
     })
+
+    # Add tojson filter (safe JSON serialisation for Alpine x-data bindings)
+    env.filters["tojson"] = lambda obj, **kw: json.dumps(obj, ensure_ascii=False, **kw)
 
     return env

@@ -1,0 +1,21 @@
+{#
+  Component: progress_bar.html
+  Vars:
+    pct      — integer 0–100
+    status   — 'completed' | 'failed' | other (active/in-progress)
+    show_pct — bool (default true)
+#}
+{% set show_pct = show_pct if show_pct is defined else true %}
+<div class="flex items-center gap-3">
+    <div class="flex-1 bg-slate-200 dark:bg-white/8 rounded-full h-1.5 overflow-hidden">
+        <div class="h-1.5 rounded-full transition-all duration-500
+            {% if status == 'completed' %}bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.4)]
+            {% elif status == 'failed' %}bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.4)]
+            {% else %}bg-gradient-to-r from-purple-500 to-blue-500 shimmer shadow-[0_0_6px_rgba(139,92,246,0.4)]{% endif %}"
+             style="width: {{ pct }}%">
+        </div>
+    </div>
+    {% if show_pct %}
+    <span class="text-xs font-mono text-slate-400 dark:text-slate-500 tabular-nums w-8 text-right">{{ pct }}%</span>
+    {% endif %}
+</div>

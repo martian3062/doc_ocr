@@ -1,18 +1,253 @@
-/* Evolet TMH OCR Pipeline — Custom styles */
-/* Most styling is done via Tailwind CSS CDN */
-/* This file handles edge cases and print styles */
+/* Evolet TMH OCR Pipeline — Custom styles
+   Core utilities, aurora animations, Bulma dark overrides, HTMX, print. */
 
-@media print {
-    nav, footer, .no-print { display: none !important; }
-    body { background: white !important; color: black !important; }
-    .glass { background: white !important; border: 1px solid #ddd !important; }
-}
+/* ── Hide Alpine-cloaked elements before init ── */
+[x-cloak] { display: none !important; }
 
-/* Smooth scroll */
+/* ── HTMX loading indicator ── */
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { display: block; }
+
+/* ── Smooth scroll ── */
 html { scroll-behavior: smooth; }
 
-/* Selection color */
-::selection {
-    background: rgba(6, 182, 212, 0.3);
-    color: white;
+/* ── Selection ── */
+::selection { background: rgba(167, 139, 250, 0.28); color: #4C1D95; }
+.dark ::selection { background: rgba(139, 92, 246, 0.35); color: #e9d5ff; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Aurora Mesh Background
+   Five independently animated radial blobs produce an aurora borealis
+   effect.  Light mode dims them; dark mode shows them at full opacity.
+───────────────────────────────────────────────────────────────────────── */
+.aurora-field {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Base mesh (static gradient layer underneath the orbs) */
+.aurora-field::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 0%,   hsla(270,100%,68%,0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 70% at 100% 60%,  hsla(220,100%,65%,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 60% at 0%   80%,  hsla(290,80%,65%,0.05) 0%,  transparent 55%);
+}
+
+/* Grain overlay for perceived depth */
+.aurora-field::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+
+/* Light mode: orbs are soft, pastel */
+.aurora-orb { opacity: 0.5; }
+/* Dark mode: orbs are vivid, space-like */
+.dark .aurora-orb { opacity: 1; filter: blur(110px); }
+
+/* Orb 1 — Violet/Purple — top-right */
+.ao-1 {
+  width: 800px; height: 700px;
+  top: -220px; right: -120px;
+  background: radial-gradient(circle at 40% 40%,
+    hsla(270, 85%, 65%, 0.9) 0%,
+    hsla(250, 80%, 55%, 0.5) 40%,
+    transparent 70%);
+  animation: ao1 20s ease-in-out infinite;
+}
+
+/* Orb 2 — Blue/Indigo — bottom-left */
+.ao-2 {
+  width: 750px; height: 750px;
+  bottom: -220px; left: -120px;
+  background: radial-gradient(circle at 60% 60%,
+    hsla(220, 100%, 62%, 0.8) 0%,
+    hsla(240, 90%, 55%, 0.4) 40%,
+    transparent 70%);
+  animation: ao2 25s ease-in-out infinite;
+}
+
+/* Orb 3 — Purple/Pink — centre */
+.ao-3 {
+  width: 600px; height: 600px;
+  top: 38%; left: 38%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 50% 50%,
+    hsla(290, 75%, 65%, 0.5) 0%,
+    hsla(310, 70%, 60%, 0.2) 50%,
+    transparent 70%);
+  animation: ao3 17s ease-in-out infinite;
+}
+
+/* Orb 4 — Cyan/Teal — top-left */
+.ao-4 {
+  width: 450px; height: 450px;
+  top: 10%; left: 5%;
+  background: radial-gradient(circle at 50% 50%,
+    hsla(195, 100%, 60%, 0.5) 0%,
+    hsla(210, 90%, 60%, 0.2) 50%,
+    transparent 70%);
+  animation: ao4 22s ease-in-out infinite;
+}
+
+/* Orb 5 — Pink/Rose — bottom-right */
+.ao-5 {
+  width: 400px; height: 400px;
+  bottom: 15%; right: 10%;
+  background: radial-gradient(circle at 50% 50%,
+    hsla(335, 85%, 65%, 0.45) 0%,
+    hsla(350, 80%, 60%, 0.2) 50%,
+    transparent 70%);
+  animation: ao5 28s ease-in-out infinite;
+}
+
+@keyframes ao1 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  30%     { transform: translate(-70px, 50px) scale(1.08); }
+  60%     { transform: translate(50px,-70px) scale(0.94); }
+}
+@keyframes ao2 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  35%     { transform: translate(80px,-55px) scale(1.12); }
+  65%     { transform: translate(-45px, 75px) scale(0.96); }
+}
+@keyframes ao3 {
+  0%,100% { transform: translate(-50%,-50%) scale(1) rotate(0deg); }
+  50%     { transform: translate(-50%,-50%) scale(1.25) rotate(35deg); }
+}
+@keyframes ao4 {
+  0%,100% { transform: translate(0,0); }
+  50%     { transform: translate(60px, 50px) scale(1.1); }
+}
+@keyframes ao5 {
+  0%,100% { transform: translate(0,0); }
+  50%     { transform: translate(-50px,-45px) scale(1.15); }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Bulma dark-mode integration
+   Bulma loads before Tailwind; here we patch Bulma components so they
+   respect the .dark class on <html>.
+───────────────────────────────────────────────────────────────────────── */
+
+/* Tags */
+.dark .tag:not(.is-white):not(.is-light) {
+  background-color: rgba(255,255,255,0.08);
+  color: #e2e8f0;
+  border-color: rgba(255,255,255,0.12);
+}
+.dark .tag.is-primary { background: var(--radix-violet-9); color: white; }
+.dark .tag.is-success { background: #059669; color: white; }
+.dark .tag.is-danger  { background: #dc2626; color: white; }
+.dark .tag.is-warning { background: #d97706; color: white; }
+.dark .tag.is-info    { background: #0284c7; color: white; }
+.dark .tag.is-light   { background: rgba(255,255,255,0.08); color: #cbd5e1; }
+
+/* Notifications */
+.dark .notification {
+  background: rgba(255,255,255,0.05);
+  color: #e2e8f0;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.dark .notification.is-primary {
+  background: rgba(139,92,246,0.15);
+  border-color: rgba(139,92,246,0.3);
+  color: #c4b5fd;
+}
+.dark .notification.is-success {
+  background: rgba(16,185,129,0.12);
+  border-color: rgba(16,185,129,0.25);
+  color: #6ee7b7;
+}
+.dark .notification.is-danger {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.25);
+  color: #fca5a5;
+}
+.dark .notification.is-warning {
+  background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.25);
+  color: #fcd34d;
+}
+
+/* Progress bars */
+.dark .progress {
+  background-color: rgba(255,255,255,0.08);
+}
+.dark .progress.is-primary::-webkit-progress-value { background: var(--radix-violet-9); }
+.dark .progress.is-primary::-moz-progress-bar      { background: var(--radix-violet-9); }
+.dark .progress.is-success::-webkit-progress-value { background: #10b981; }
+.dark .progress.is-success::-moz-progress-bar      { background: #10b981; }
+
+/* Hero transparent in both modes (aurora shows through) */
+.hero.is-aurora {
+  background: transparent !important;
+  position: relative;
+}
+.hero.is-aurora .hero-body {
+  padding: 3rem 0;
+}
+
+/* Bulma panel dark */
+.dark .panel { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+.dark .panel-heading { background: rgba(255,255,255,0.06); color: #e2e8f0; border-color: rgba(255,255,255,0.08); }
+.dark .panel-block   { border-color: rgba(255,255,255,0.06); color: #cbd5e1; }
+.dark .panel-block:hover { background: rgba(255,255,255,0.04); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Enhanced entrance animations (stagger support)
+───────────────────────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes glowPulse {
+  0%,100% { box-shadow: 0 0 20px rgba(139,92,246,0.2), 0 0 60px rgba(139,92,246,0.05); }
+  50%     { box-shadow: 0 0 35px rgba(139,92,246,0.4), 0 0 80px rgba(139,92,246,0.12); }
+}
+
+.fade-up    { animation: fadeUp   0.45s cubic-bezier(.22,.68,0,1.2) both; }
+.fade-scale { animation: fadeScale 0.4s cubic-bezier(.22,.68,0,1.2) both; }
+.glow-pulse { animation: glowPulse 3s ease-in-out infinite; }
+
+/* Stagger helpers */
+.stagger > *:nth-child(1) { animation-delay: 0ms;   }
+.stagger > *:nth-child(2) { animation-delay: 60ms;  }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+.stagger > *:nth-child(7) { animation-delay: 360ms; }
+.stagger > *:nth-child(8) { animation-delay: 420ms; }
+
+/* ── Scrollbar thin override for log panels ── */
+.log-scroll::-webkit-scrollbar { width: 4px; }
+.log-scroll::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.3); border-radius: 2px; }
+
+/* ── Print ── */
+@media print {
+  nav, footer, .no-print, .aurora-field { display: none !important; }
+  body  { background: white !important; color: black !important; animation: none !important; }
+  .glass { background: white !important; border: 1px solid #ddd !important; box-shadow: none !important; }
 }

@@ -1,72 +1,137 @@
-{% if run.status not in ['completed', 'failed'] %}
-<div class="space-y-4">
-    <div class="flex items-center justify-between">
-        <h3 class="text-white font-semibold flex items-center gap-3 brand-font">
-            <svg class="animate-spin w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-            {{ run.name or "Run " ~ run.id.hex[:8] }}
-        </h3>
-        <span class="px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-300 text-xs font-semibold uppercase tracking-widest border border-purple-500/20 shadow-[0_0_15px_rgba(167,139,250,0.15)]">{{ run.get_status_display() }}</span>
-    </div>
+{#
+  Partial: run_progress.html
+  Context vars: run (PipelineRun instance)
+  Used in: run_detail.html (hx-swap="innerHTML"), dashboard.html
+#}
 
-    <div class="space-y-2">
-        <div class="flex justify-between text-xs font-mono">
-            <span class="text-purple-300">{{ run.processed_pdfs }} / {{ run.total_pdfs }} PDFs</span>
-            <span class="text-blue-300">{{ run.progress_percent }}%</span>
-        </div>
-        <div class="w-full bg-white/5 rounded-full h-2 border border-white/5 overflow-hidden">
-            <div class="h-2 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 shimmer shadow-[0_0_10px_rgba(139,92,246,0.5)]" style="width: {{ run.progress_percent }}%"></div>
-        </div>
-    </div>
+{% set active = run.status not in ['completed', 'failed'] %}
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-center">
-        <div class="bg-white/40 rounded-xl p-3 border border-indigo-200/50">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Notes</p>
-            <p class="text-xl font-bold text-white brand-font">{{ run.total_notes }}</p>
-        </div>
-        <div class="bg-white/40 rounded-xl p-3 border border-indigo-200/50">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Mentions</p>
-            <p class="text-xl font-bold text-indigo-300 brand-font">{{ run.total_mentions }}</p>
-        </div>
-        <div class="bg-white/40 rounded-xl p-3 border border-indigo-200/50">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Resolved</p>
-            <p class="text-xl font-bold text-emerald-300 brand-font">{{ run.resolved_notes }}</p>
-        </div>
-        <div class="bg-white/40 rounded-xl p-3 border border-indigo-200/50">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Remaining</p>
-            <p class="text-xl font-bold text-amber-300 brand-font">{{ run.unresolved_notes }}</p>
-        </div>
-    </div>
-</div>
-{% else %}
-<div class="space-y-4">
-    <div class="flex items-center justify-between pointer-events-none">
-        <h3 class="text-white font-semibold flex items-center gap-3 brand-font">
-            {% if run.status == 'completed' %}
-            <svg class="w-5 h-5 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+{# ── Step-wise pipeline tracker ── #}
+{% set pipeline_steps = [
+    ('pending',       'Pending',    'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'),
+    ('extracting',    'OCR',        'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'),
+    ('triaging',      'Triaging',   'M3 4a1 1 0 011-1h16a1 1 0 010 2H4a1 1 0 01-1-1zm3 4a1 1 0 011-1h10a1 1 0 010 2H7a1 1 0 01-1-1zm3 4a1 1 0 011-1h4a1 1 0 010 2h-4a1 1 0 01-1-1z'),
+    ('llm_processing','LLM',        'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z'),
+    ('merging',       'Merge',      'M4 6h16M4 10h16M4 14h16M4 18h16'),
+    ('qc',            'QC',         'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'),
+    ('completed',     'Done',       'M5 13l4 4L19 7'),
+] %}
+
+{% set status_order = ['pending','extracting','triaging','llm_processing','merging','qc','completed'] %}
+{% set current_idx  = status_order.index(run.status) if run.status in status_order else (6 if run.status == 'failed' else 0) %}
+
+<div class="p-6 space-y-5">
+
+    <!-- Title row -->
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+        <h3 class="text-slate-800 dark:text-slate-100 font-semibold flex items-center gap-2.5 brand-font">
+            {% if active %}
+            <svg class="w-5 h-5 text-purple-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            {% elif run.status == 'completed' %}
+            <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
             {% else %}
-            <svg class="w-5 h-5 text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             {% endif %}
-            {{ run.name or "Run " ~ run.id.hex[:8] }}
+            {{ run.name or ("Run " ~ run.id.hex[:8]) }}
         </h3>
-        <span class="px-2.5 py-1 rounded-full {% if run.status == 'completed' %}bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 shadow-[0_0_15px_rgba(52,211,153,0.15)]{% else %}bg-red-500/10 text-red-300 border border-red-500/20 shadow-[0_0_15px_rgba(248,113,113,0.15)]{% endif %} text-xs font-semibold uppercase tracking-widest">{{ run.get_status_display() }}</span>
+        <span class="text-xs font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider
+            {% if run.status == 'completed' %}status-completed
+            {% elif run.status == 'failed' %}status-failed
+            {% else %}status-active{% endif %}">
+            {{ run.get_status_display() }}
+        </span>
     </div>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-center">
-        <div class="bg-white/40 rounded-xl p-3 border border-indigo-200/50">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Durataion</p>
-            <p class="text-lg font-bold text-white font-mono">{{ (run.duration_seconds / 60)|round|int }}m {{ (run.duration_seconds % 60)|int }}s</p>
+
+    <!-- Step tracker -->
+    <div class="flex items-center gap-0 overflow-x-auto pb-1">
+        {% for step_status, step_label, step_icon in pipeline_steps %}
+        {% set step_idx = loop.index0 %}
+        {% set is_done   = step_idx < current_idx %}
+        {% set is_active = step_idx == current_idx and (active or run.status == step_status) %}
+        {% set is_fail   = run.status == 'failed' and step_idx == current_idx %}
+
+        <div class="flex items-center gap-0 shrink-0">
+            <div class="flex flex-col items-center gap-1">
+                <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all
+                    {% if is_fail %}bg-red-500 border-red-500
+                    {% elif is_done %}bg-emerald-500 border-emerald-500
+                    {% elif is_active %}bg-purple-500 border-purple-500 ring-2 ring-purple-400/30 ring-offset-1
+                    {% else %}bg-transparent border-slate-300 dark:border-slate-600{% endif %}">
+                    {% if is_done %}
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                    {% elif is_fail %}
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                    {% else %}
+                    <svg class="w-3.5 h-3.5 {% if is_active %}text-white animate-pulse{% else %}text-slate-400 dark:text-slate-600{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ step_icon }}"/></svg>
+                    {% endif %}
+                </div>
+                <span class="text-[10px] font-semibold whitespace-nowrap
+                    {% if is_fail %}text-red-500
+                    {% elif is_done %}text-emerald-600 dark:text-emerald-400
+                    {% elif is_active %}text-purple-600 dark:text-purple-400
+                    {% else %}text-slate-400 dark:text-slate-500{% endif %}">
+                    {{ step_label }}
+                </span>
+            </div>
+            {% if not loop.last %}
+            <div class="w-6 sm:w-10 h-0.5 mb-5
+                {% if step_idx < current_idx %}bg-emerald-400
+                {% else %}bg-slate-200 dark:bg-slate-700{% endif %}"></div>
+            {% endif %}
         </div>
-        <div class="bg-white/40 rounded-xl p-3 border border-indigo-200/50">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">PDFs Done</p>
-            <p class="text-lg font-bold text-blue-300 brand-font">{{ run.processed_pdfs }} / {{ run.total_pdfs }}</p>
+        {% endfor %}
+    </div>
+
+    <!-- Progress bar (active only) -->
+    {% if active %}
+    <div class="space-y-1.5">
+        <div class="flex justify-between text-xs font-mono text-slate-500 dark:text-slate-400">
+            <span>{{ run.processed_pdfs }} / {{ run.total_pdfs }} PDFs</span>
+            <span>{{ run.progress_percent }}%</span>
         </div>
-        <div class="bg-white/40 rounded-xl p-3 border border-indigo-200/50">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Mentions</p>
-            <p class="text-lg font-bold text-indigo-300 brand-font">{{ run.total_mentions }}</p>
+        <div class="w-full bg-slate-200 dark:bg-white/8 rounded-full h-2 overflow-hidden">
+            <div class="h-2 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 shimmer transition-all duration-500"
+                 style="width: {{ run.progress_percent }}%"></div>
         </div>
-        <div class="bg-white/40 rounded-xl p-3 border border-indigo-200/50">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Resolved</p>
-            <p class="text-lg font-bold text-emerald-300 brand-font">{{ run.resolved_notes }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Stats grid -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {% if active %}
+        <div class="rounded-xl p-3 bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/8 text-center">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Notes</p>
+            <p class="text-xl font-bold text-slate-700 dark:text-slate-200 brand-font">{{ run.total_notes }}</p>
         </div>
+        <div class="rounded-xl p-3 bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/8 text-center">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Mentions</p>
+            <p class="text-xl font-bold text-indigo-600 dark:text-indigo-300 brand-font">{{ run.total_mentions }}</p>
+        </div>
+        <div class="rounded-xl p-3 bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/8 text-center">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Resolved</p>
+            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-300 brand-font">{{ run.resolved_notes }}</p>
+        </div>
+        <div class="rounded-xl p-3 bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/8 text-center">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Remaining</p>
+            <p class="text-xl font-bold text-amber-600 dark:text-amber-300 brand-font">{{ run.unresolved_notes }}</p>
+        </div>
+        {% else %}
+        <div class="rounded-xl p-3 bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/8 text-center">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Duration</p>
+            <p class="text-lg font-bold text-slate-700 dark:text-slate-200 font-mono">{{ (run.duration_seconds / 60)|round|int }}m {{ (run.duration_seconds % 60)|int }}s</p>
+        </div>
+        <div class="rounded-xl p-3 bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/8 text-center">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">PDFs Done</p>
+            <p class="text-lg font-bold text-blue-600 dark:text-blue-300 brand-font">{{ run.processed_pdfs }} / {{ run.total_pdfs }}</p>
+        </div>
+        <div class="rounded-xl p-3 bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/8 text-center">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Mentions</p>
+            <p class="text-lg font-bold text-indigo-600 dark:text-indigo-300 brand-font">{{ run.total_mentions }}</p>
+        </div>
+        <div class="rounded-xl p-3 bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/8 text-center">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Resolved</p>
+            <p class="text-lg font-bold text-emerald-600 dark:text-emerald-300 brand-font">{{ run.resolved_notes }}</p>
+        </div>
+        {% endif %}
     </div>
 </div>
-{% endif %}

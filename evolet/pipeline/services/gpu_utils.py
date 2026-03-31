@@ -14,12 +14,19 @@ gpu_info()           Return a dict with current GPU memory statistics.
 
 import gc
 import logging
+import os
+import platform
 from typing import Optional
 
 try:
     import torch
 except ImportError:
     torch = None
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 logger = logging.getLogger("pipeline")
 
@@ -101,6 +108,84 @@ def release_cuda() -> None:
         torch.cuda.ipc_collect()
     except Exception:
         pass  # not all CUDA versions support ipc_collect
+
+
+def system_info() -> dict:
+    """
+    Return a full hardware snapshot: GPU, CPU, RAM, and pipeline ETA estimates.
+
+    ETA model (empirically calibrated on L4 / T4 / CPU):
+      GPU Ampere+  (≥ 24 GB): ~20 s/pdf
+      GPU other    (< 24 GB): ~40 s/pdf
+      CPU only               : ~180 s/pdf
+    These are baseline estimates; actual time scales with page count.
+
+    Keys
+    ----
+    gpu           : dict from gpu_info()
+    cpu_cores     : int  — logical cores
+    cpu_model     : str
+    ram_total_gb  : float
+    ram_free_gb   : float
+    ram_used_pct  : float
+    platform      : str  — e.g. "Linux-5.15 x86_64"
+    eta_per_pdf_s : int  — estimated seconds per PDF
+    compute_tier  : str  — "gpu_fast" | "gpu_std" | "cpu"
+    """
+    gpu = gpu_info()
+
+    cpu_cores = os.cpu_count() or 1
+    cpu_model = "Unknown CPU"
+    try:
+        if psutil:
+            # Try to get brand string from /proc/cpuinfo (Linux) or WMIC (Windows)
+            import subprocess
+            if platform.system() == "Linux":
+                with open("/proc/cpuinfo") as f:
+                    for line in f:
+                        if line.startswith("model name"):
+                            cpu_model = line.split(":", 1)[1].strip()
+                            break
+            elif platform.system() == "Windows":
+                r = subprocess.check_output(
+                    "wmic cpu get name", shell=True, text=True, timeout=3
+                )
+                lines = [l.strip() for l in r.splitlines() if l.strip() and l.strip() != "Name"]
+                if lines:
+                    cpu_model = lines[0]
+    except Exception:
+        pass
+
+    ram_total_gb = ram_free_gb = ram_used_pct = 0.0
+    if psutil:
+        vm = psutil.virtual_memory()
+        ram_total_gb  = round(vm.total  / 1024 ** 3, 1)
+        ram_free_gb   = round(vm.available / 1024 ** 3, 1)
+        ram_used_pct  = round(vm.percent, 1)
+
+    # Determine compute tier and ETA
+    if gpu.get("available"):
+        if gpu.get("total_gb", 0) >= 20:
+            compute_tier  = "gpu_fast"
+            eta_per_pdf_s = 20
+        else:
+            compute_tier  = "gpu_std"
+            eta_per_pdf_s = 40
+    else:
+        compute_tier  = "cpu"
+        eta_per_pdf_s = 180
+
+    return {
+        "gpu":           gpu,
+        "cpu_cores":     cpu_cores,
+        "cpu_model":     cpu_model,
+        "ram_total_gb":  ram_total_gb,
+        "ram_free_gb":   ram_free_gb,
+        "ram_used_pct":  ram_used_pct,
+        "platform":      f"{platform.system()} {platform.release()} {platform.machine()}",
+        "eta_per_pdf_s": eta_per_pdf_s,
+        "compute_tier":  compute_tier,
+    }
 
 
 def gpu_info() -> dict:

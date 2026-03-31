@@ -2,36 +2,60 @@
 {% block title %}{{ run.name or run.id.hex[:8] }}{% endblock %}
 
 {% block content %}
-<div class="space-y-8 slide-up">
-    <!-- Header -->
-    <div class="glass rounded-3xl p-8 border border-purple-500/20 glow-blue relative overflow-hidden">
-        <div class="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/5 -z-10"></div>
+<div class="space-y-6 slide-up">
 
-        <div class="flex items-start justify-between">
+    <!-- ── Header ── -->
+    <div class="glass rounded-2xl p-6 border border-blue-200/30 dark:border-blue-500/15 glow-blue relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/3 -z-10 pointer-events-none"></div>
+
+        <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
-                <h1 class="text-3xl font-bold text-white mb-2 brand-font truncate max-w-xl">{{ run.name or "Pipeline Run" }}</h1>
-                <p class="text-sm font-mono text-blue-300 mb-4">{{ run.id }}</p>
+                <div class="flex items-center gap-3 mb-1">
+                    <a href="{{ url('pipeline:run_list') }}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </a>
+                    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100 brand-font truncate max-w-xl">
+                        {{ run.name or "Pipeline Run" }}
+                    </h1>
+                </div>
+                <p class="text-xs font-mono text-slate-400 dark:text-slate-500 ml-7 mb-3">{{ run.id }}</p>
 
-                <div class="flex flex-wrap items-center gap-3">
-                    {% if run.status == 'completed' %}
-                    <span class="px-3 py-1 bg-emerald-500/10 text-emerald-300 text-xs font-bold rounded-lg border border-emerald-500/20 uppercase tracking-widest flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>{{ run.get_status_display() }}</span>
-                    {% elif run.status == 'failed' %}
-                    <span class="px-3 py-1 bg-red-500/10 text-red-300 text-xs font-bold rounded-lg border border-red-500/20 uppercase tracking-widest flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-400"></span>{{ run.get_status_display() }}</span>
-                    {% else %}
-                    <span class="px-3 py-1 bg-purple-500/10 text-purple-300 text-xs font-bold rounded-lg border border-purple-500/20 uppercase tracking-widest flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>{{ run.get_status_display() }}</span>
+                <div class="flex flex-wrap items-center gap-2 ml-7">
+                    <span class="text-xs font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider flex items-center gap-1.5
+                        {% if run.status == 'completed' %}status-completed
+                        {% elif run.status == 'failed' %}status-failed
+                        {% else %}status-active{% endif %}">
+                        <span class="w-1.5 h-1.5 rounded-full inline-block
+                            {% if run.status == 'completed' %}bg-emerald-500
+                            {% elif run.status == 'failed' %}bg-red-500
+                            {% else %}bg-purple-500 animate-pulse{% endif %}"></span>
+                        {{ run.get_status_display() }}
+                    </span>
+                    <span class="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/8">
+                        {{ run.model_id }} · {{ '4-bit' if run.use_4bit else 'FP16' }}
+                    </span>
+                    {% if run.started_at %}
+                    <span class="text-xs text-slate-400 dark:text-slate-500">Started {{ run.started_at.strftime('%b %d, %H:%M') }}</span>
                     {% endif %}
-                    
-                     <span class="px-3 py-1 bg-white/5 text-gray-300 text-xs font-mono rounded-lg border border-white/10">{{ run.model_id }} ({{ '4-bit' if run.use_4bit else 'FP16' }})</span>
                 </div>
             </div>
 
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 shrink-0">
+                {% if run.status not in ['completed', 'failed'] %}
+                <form method="post" action="{{ url('pipeline:cancel_run', run_id=run.id) }}">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                    <button type="submit"
+                            onclick="return confirm('Cancel this run? The current step will finish before stopping.')"
+                            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-400 hover:text-white hover:bg-red-600 border border-red-500/40 hover:border-red-600 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        Cancel Run
+                    </button>
+                </form>
+                {% endif %}
                 {% if run.status == 'completed' %}
                 <a href="{{ url('pipeline:download_run_zip', run_id=run.id) }}"
-                   class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-xl text-white font-medium transition-all shadow-lg shadow-purple-500/25">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
+                   class="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-xl text-white text-sm font-semibold transition-all shadow-lg shadow-purple-500/20 hover:shadow-purple-500/35">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     Download ZIP
                 </a>
                 {% endif %}
@@ -39,65 +63,85 @@
         </div>
     </div>
 
-    <!-- Live Progress Indicator -->
-    <div hx-get="{{ url('pipeline:run_progress', run_id=run.id) }}"
+    <!-- ── Live progress ── -->
+    <div class="glass rounded-2xl border border-slate-200/30 dark:border-white/5 overflow-hidden"
+         hx-get="{{ url('pipeline:run_progress', run_id=run.id) }}"
          {% if run.status not in ['completed', 'failed'] %}hx-trigger="every 3s"{% endif %}
          hx-swap="innerHTML">
         {% include "pipeline/partials/run_progress.html" %}
     </div>
 
-    <!-- Error Message -->
+    <!-- ── Error ── -->
     {% if run.error_message %}
-    <div class="glass rounded-2xl p-6 border border-red-500/30 bg-red-500/5">
-        <h2 class="text-lg font-semibold text-red-400 brand-font flex items-center gap-2 mb-2">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            Pipeline Failed
+    <div class="glass rounded-2xl p-5 border border-red-300/40 dark:border-red-500/25 bg-red-50/50 dark:bg-red-900/10">
+        <h2 class="text-sm font-bold text-red-600 dark:text-red-400 flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Pipeline Error
         </h2>
-        <p class="text-sm font-mono text-red-300/80 bg-red-900/20 p-4 rounded-xl truncate">{{ run.error_message }}</p>
+        <pre class="text-xs font-mono text-red-500 dark:text-red-300 bg-red-100/50 dark:bg-red-900/20 p-4 rounded-xl overflow-x-auto whitespace-pre-wrap break-all">{{ run.error_message }}</pre>
     </div>
     {% endif %}
 
-    <!-- Execution Logs -->
-    <div class="glass rounded-2xl border border-white/5 overflow-hidden">
-        <div class="p-6 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <h2 class="text-xl font-semibold text-white brand-font flex items-center gap-3">
-                <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <!-- ── Execution Logs (collapsible) ── -->
+    <div class="glass rounded-2xl border border-slate-200/30 dark:border-white/5 overflow-hidden"
+         x-data="{ logsOpen: true }">
+
+        <!-- Log header -->
+        <button @click="logsOpen = !logsOpen"
+                class="w-full px-6 py-4 border-b border-slate-200/40 dark:border-white/5 bg-slate-50/60 dark:bg-white/3 flex items-center justify-between hover:bg-slate-100/60 dark:hover:bg-white/5 transition-colors">
+            <h2 class="text-sm font-bold text-slate-700 dark:text-slate-200 brand-font flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
                 Execution Logs
+                {% if logs %}
+                <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400">{{ logs|length }}</span>
+                {% endif %}
             </h2>
-            <button onclick="window.location.reload()" class="p-2 text-gray-400 hover:text-white bg-white/5 rounded-lg hover:bg-white/10 transition-colors" title="Refresh Logs">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-            </button>
-        </div>
-        <div class="p-1 h-96 overflow-y-auto">
-            {% if logs %}
-            <div class="font-mono text-xs divide-y divide-white/5">
-                {% for log in logs %}
-                <div class="px-5 py-3 flex gap-4 hover:bg-white/5 transition-colors">
-                    <span class="text-gray-500 shrink-0">{{ log.created_at.strftime('%H:%M:%S') }}</span>
-                    {% if log.level == 'error' %}
-                    <span class="text-red-400 font-bold w-16 shrink-0">[ERROR]</span>
-                    <span class="text-red-300 w-32 shrink-0 truncate">{{ log.stage }}</span>
-                    <span class="text-red-200">{{ log.message }}</span>
-                    {% elif log.level == 'warning' %}
-                    <span class="text-amber-400 font-bold w-16 shrink-0">[WARN]</span>
-                    <span class="text-amber-300 w-32 shrink-0 truncate">{{ log.stage }}</span>
-                    <span class="text-amber-200">{{ log.message }}</span>
-                    {% else %}
-                    <span class="text-blue-400 font-bold w-16 shrink-0">[INFO]</span>
-                    <span class="text-purple-300 w-32 shrink-0 truncate">{{ log.stage }}</span>
-                    <span class="text-gray-300">{{ log.message }}</span>
-                    {% endif %}
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="event.stopPropagation(); window.location.reload()"
+                        class="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-white/8 rounded-lg hover:bg-slate-200 dark:hover:bg-white/12 transition-colors" title="Refresh">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </button>
+                <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="logsOpen ? 'rotate-180' : ''"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+        </button>
+
+        <!-- Log body -->
+        <div x-show="logsOpen" x-collapse>
+            <div class="h-[26rem] overflow-y-auto font-mono text-[11px]">
+                {% if logs %}
+                <div class="divide-y divide-slate-100 dark:divide-white/5">
+                    {% for log in logs %}
+                    <div class="flex gap-3 px-5 py-2.5 hover:bg-slate-50 dark:hover:bg-white/3 transition-colors
+                        {% if log.level == 'error' %}bg-red-50/40 dark:bg-red-900/10
+                        {% elif log.level == 'warning' %}bg-amber-50/40 dark:bg-amber-900/10{% endif %}">
+                        <span class="text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">{{ log.created_at.strftime('%H:%M:%S') }}</span>
+                        {% if log.level == 'error' %}
+                        <span class="text-red-500 dark:text-red-400 font-bold w-14 shrink-0">[ERR]</span>
+                        <span class="text-red-400 dark:text-red-500 w-28 shrink-0 truncate">{{ log.stage }}</span>
+                        <span class="text-red-600 dark:text-red-300">{{ log.message }}</span>
+                        {% elif log.level == 'warning' %}
+                        <span class="text-amber-500 dark:text-amber-400 font-bold w-14 shrink-0">[WARN]</span>
+                        <span class="text-amber-500 dark:text-amber-400 w-28 shrink-0 truncate">{{ log.stage }}</span>
+                        <span class="text-amber-700 dark:text-amber-300">{{ log.message }}</span>
+                        {% else %}
+                        <span class="text-blue-500 dark:text-blue-400 font-bold w-14 shrink-0">[INFO]</span>
+                        <span class="text-purple-500 dark:text-purple-400 w-28 shrink-0 truncate">{{ log.stage }}</span>
+                        <span class="text-slate-600 dark:text-slate-300">{{ log.message }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
+                {% else %}
+                <div class="h-full flex items-center justify-center text-slate-400 dark:text-slate-500 text-xs">
+                    Waiting for logs…
+                </div>
+                {% endif %}
             </div>
-            {% else %}
-            <div class="h-full flex items-center justify-center text-gray-500 font-mono text-sm">
-                Waiting for logs...
-            </div>
-            {% endif %}
         </div>
     </div>
+
 </div>
 {% endblock %}

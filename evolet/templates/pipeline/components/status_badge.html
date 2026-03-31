@@ -1,0 +1,15 @@
+{#
+  Component: status_badge.html
+  Vars: status (string) — PipelineRun.status value
+  Usage: {% set status = run.status %}{% include "pipeline/components/status_badge.html" %}
+#}
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border uppercase tracking-wider
+    {% if status == 'completed' %}status-completed
+    {% elif status == 'failed' %}status-failed
+    {% else %}status-active{% endif %}">
+    <span class="w-1.5 h-1.5 rounded-full
+        {% if status == 'completed' %}bg-emerald-500
+        {% elif status == 'failed' %}bg-red-500
+        {% else %}bg-purple-500 animate-pulse{% endif %}"></span>
+    {{ status|replace('_', ' ')|title }}
+</span>

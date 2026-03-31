@@ -42,7 +42,7 @@ from .models import (
     FinalRecord, Mention, NoteLedger, PDFDocument,
     Patient, PipelineRun,
 )
-from .services.gpu_utils import gpu_info
+from .services.gpu_utils import gpu_info, system_info
 from .services.qc import compute_run_summary
 
 logger = logging.getLogger("pipeline")
@@ -65,6 +65,7 @@ def dashboard(request):
     Counts are pulled directly from the database; no caching needed at
     typical dataset sizes (hundreds of patients).
     """
+    all_doc_ids = list(PDFDocument.objects.values_list("id", flat=True))
     return render(request, "dashboard.html", {
         "total_patients": Patient.objects.count(),
         "total_pdfs":     PDFDocument.objects.count(),
@@ -73,7 +74,8 @@ def dashboard(request):
         "active_run":     PipelineRun.objects.filter(
             status__in=_ACTIVE_STATUSES
         ).first(),
-        "gpu": gpu_info(),
+        "gpu":        gpu_info(),
+        "all_doc_ids": all_doc_ids,
     })
 
 
@@ -217,7 +219,7 @@ def upload(request):
                 code=patient_code,
                 defaults={"display_name": patient_code},
             )
-            PDFDocument.objects.create(
+            doc = PDFDocument.objects.create(
                 patient          = patient,
                 original_filename = f.name,
                 file             = f,
@@ -225,7 +227,7 @@ def upload(request):
                 file_size_bytes  = f.size,
             )
             pdf_count += 1
-            imported.append({"name": f.name, "type": "pdf", "patient": patient})
+            imported.append({"name": f.name, "type": "pdf", "patient": patient, "doc_id": str(doc.id)})
 
         elif ext in (".txt", ".text"):
             patient_code = Path(f.name).stem
@@ -233,7 +235,7 @@ def upload(request):
                 code=patient_code,
                 defaults={"display_name": patient_code},
             )
-            PDFDocument.objects.create(
+            doc = PDFDocument.objects.create(
                 patient          = patient,
                 original_filename = f.name,
                 file             = f,
@@ -241,20 +243,25 @@ def upload(request):
                 file_size_bytes  = f.size,
             )
             txt_count += 1
-            imported.append({"name": f.name, "type": "txt", "patient": patient})
+            imported.append({"name": f.name, "type": "txt", "patient": patient, "doc_id": str(doc.id)})
 
         else:
             errors.append(f"{f.name}: Unsupported file type ({ext})")
 
     # HTMX requests get a lightweight partial; full-page requests redirect
+    # Collect IDs of newly created PDF/TXT documents so the Run Pipeline
+    # button only processes those files, not the entire database.
+    new_doc_ids = [item["doc_id"] for item in imported if "doc_id" in item]
+
     if request.headers.get("HX-Request"):
         return render(request, "pipeline/partials/upload_result.html", {
-            "imported":   imported,
-            "count":      len(imported),
-            "json_count": json_count,
-            "pdf_count":  pdf_count,
-            "txt_count":  txt_count,
-            "errors":     errors,
+            "imported":    imported,
+            "count":       len(imported),
+            "json_count":  json_count,
+            "pdf_count":   pdf_count,
+            "txt_count":   txt_count,
+            "errors":      errors,
+            "new_doc_ids": new_doc_ids,
         })
     return redirect("pipeline:patient_list")
 
@@ -484,16 +491,17 @@ def start_run(request):
     """
     Create a new PipelineRun and launch it in a background thread.
 
-    If "document_ids" is provided in POST, only those documents are included.
-    Otherwise all PDFDocuments in the database are processed.
+    "document_ids" MUST be provided — we never fall back to processing all
+    PDFs automatically, which would silently reprocess the whole database.
+    Use the dashboard "Run All" button (which explicitly passes all IDs) for
+    a full batch run.
     """
     selected_ids = request.POST.getlist("document_ids")
-    documents = (
-        PDFDocument.objects.filter(id__in=selected_ids)
-        if selected_ids
-        else PDFDocument.objects.all()
-    )
+    if not selected_ids:
+        messages.error(request, "No documents selected. Upload a PDF first or use Run All.")
+        return redirect("pipeline:upload")
 
+    documents = PDFDocument.objects.filter(id__in=selected_ids)
     if not documents.exists():
         return JsonResponse({"error": "No documents to process"}, status=400)
 
@@ -562,6 +570,20 @@ def api_gpu_status(request):
     Polled every 10 s by the base template navigation bar.
     """
     return render(request, "pipeline/partials/gpu_status.html", {"gpu": gpu_info()})
+
+
+def api_system_info(request):
+    """
+    JSON endpoint — full hardware snapshot + per-PDF ETA estimate.
+    Called by the ETA panel on upload and dashboard pages.
+    Optionally accepts ?n=<int> to compute ETA for n PDFs.
+    """
+    info = system_info()
+    n = int(request.GET.get("n", 1))
+    info["n_pdfs"]       = n
+    info["eta_total_s"]  = info["eta_per_pdf_s"] * n
+    info["eta_minutes"]  = round(info["eta_total_s"] / 60, 1)
+    return JsonResponse(info)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -662,3 +684,89 @@ def download_run_zip(request, run_id):
             as_attachment=True,
             filename=f"evolet_run_{run.id.hex[:8]}.zip",
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cancel run
+# ─────────────────────────────────────────────────────────────────────────────
+
+@require_POST
+def cancel_run(request, run_id):
+    """
+    Mark an active run as failed/cancelled immediately.
+    The background thread will keep running until its current step finishes,
+    but no new steps will be started (the orchestrator checks status between phases).
+    """
+    run = get_object_or_404(PipelineRun, id=run_id)
+    if run.status not in ("completed", "failed"):
+        run.status        = PipelineRun.Status.FAILED
+        run.error_message = "Cancelled by user"
+        run.completed_at  = timezone.now()
+        run.save(update_fields=["status", "error_message", "completed_at"])
+    if request.headers.get("HX-Request"):
+        return HttpResponse("")
+    return redirect("pipeline:run_detail", run_id=run.id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Delete
+# ─────────────────────────────────────────────────────────────────────────────
+
+@require_POST
+def delete_document(request, doc_id):
+    """
+    Delete a single PDFDocument and all its extracted data (pages, notes, mentions).
+    If the parent patient has no remaining documents after deletion, the patient
+    record is also deleted.
+
+    HTMX: returns an empty 200 response so the caller can swap the element out.
+    """
+    doc     = get_object_or_404(PDFDocument, id=doc_id)
+    patient = doc.patient
+
+    # Remove uploaded file from disk (folder-imported files are not deleted
+    # from the source directory — only the database record is removed)
+    if doc.file:
+        try:
+            Path(doc.file.path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    doc.delete()   # cascades: PageLedger, NoteLedger, Mention (document FK)
+
+    # Cascade-delete the patient if no documents remain
+    patient_deleted = False
+    if not patient.documents.exists():
+        patient.delete()
+        patient_deleted = True
+
+    if request.headers.get("HX-Request"):
+        return HttpResponse("")   # HTMX removes the target element
+    if patient_deleted:
+        return redirect("pipeline:patient_list")
+    return redirect("pipeline:patient_detail", patient_id=patient.id)
+
+
+@require_POST
+def delete_patient(request, patient_id):
+    """
+    Delete a patient record and ALL associated data: documents, pages, notes,
+    mentions, and the final record.  Uploaded PDF files are removed from disk.
+
+    HTMX: returns an empty 200 response so the caller can remove the table row.
+    """
+    patient = get_object_or_404(Patient, id=patient_id)
+
+    # Remove uploaded PDF files from disk
+    for doc in patient.documents.filter(source_type=PDFDocument.SourceType.UPLOAD):
+        if doc.file:
+            try:
+                Path(doc.file.path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    patient.delete()   # cascades: PDFDocument → PageLedger, NoteLedger, Mention, FinalRecord
+
+    if request.headers.get("HX-Request"):
+        return HttpResponse("")
+    return redirect("pipeline:patient_list")

@@ -1,7 +1,7 @@
 """
 Evolet Pipeline Orchestrator
 =============================
-Coordinates the complete medical-report processing pipeline across five phases:
+Coordinates the complete medical-report processing pipeline across six phases:
 
   Phase 1 — Extract + Triage  (CPU / IO-bound, per document)
     1a. PDF Extraction  : native text + DocTR OCR fallback  → PageLedger rows
@@ -14,6 +14,15 @@ Coordinates the complete medical-report processing pipeline across five phases:
 
   Phase 3 — Merge             (CPU, per patient)
     Deduplicate regex + LLM mentions per patient → FinalRecord rows
+
+  Phase 3b — Text Correction  (CPU, per patient)  ← NEW
+    Spell-check and grammar-clean all extracted mention values using
+    SymSpell + medical whitelist + rule-based fixes.
+
+  Phase 3c — Deep Schema      (CPU, per patient)  ← NEW
+    Build nested clinical sub-schemas (diagnosis staging, medication
+    dose/frequency, imaging modality, etc.) from the corrected flat mentions.
+    Stored in FinalRecord.grouped_record as schema_version="2.0".
 
   Phase 4 — Profile Photos    (CPU / IO-bound, per document)
     Extract passport photo from page 1 of each PDF
@@ -32,10 +41,13 @@ Design decisions
   endpoint always reflects current state.
 """
 
+import concurrent.futures
 import logging
+import threading
 import traceback
 from typing import Dict, List
 
+from django.db.models import F
 from django.utils import timezone
 
 from .models import (
@@ -48,6 +60,8 @@ from .services.note_segmenter   import segment_pages_to_notes, triage_notes
 from .services.regex_extractor  import extract_all_notes
 from .services.llm_engine       import load_model, process_unresolved_notes, unload_model
 from .services.merger           import build_final_record
+from .services.text_corrector   import correct_all_mentions
+from .services.schema_builder   import build_deep_schema
 from .services.qc               import compute_qc_metrics
 from .services.photo_extractor  import extract_profile_photo
 from .services.gpu_utils        import setup_gpu, release_cuda
@@ -75,6 +89,14 @@ def _update_run(run: PipelineRun, **kwargs) -> None:
     for k, v in kwargs.items():
         setattr(run, k, v)
     run.save(update_fields=list(kwargs.keys()))
+
+
+def _inc_run(run_id, **kwargs) -> None:
+    """Atomically increment counter fields using DB-level F() expressions.
+    Safe to call from multiple threads simultaneously."""
+    PipelineRun.objects.filter(id=run_id).update(
+        **{k: F(k) + v for k, v in kwargs.items()}
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -119,6 +141,28 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
     }
 
     try:
+        # ── Skip if already processed ─────────────────────────────────────
+        # When SKIP_EXISTING is True and a FinalRecord already exists for
+        # this patient, return cached counts from the DB rather than
+        # re-extracting everything.  This makes re-runs near-instant for
+        # documents that were fully processed in a previous run.
+        if config.SKIP_EXISTING and FinalRecord.objects.filter(patient=patient).exists():
+            page_ct = doc.page_count
+            note_ct = NoteLedger.objects.filter(document=doc).count()
+            res_ct  = NoteLedger.objects.filter(document=doc, is_resolved=True).count()
+            men_ct  = Mention.objects.filter(patient=patient, run__isnull=False, origin="regex").count()
+            result.update({
+                "page_count":   page_ct,
+                "note_count":   note_ct,
+                "resolved":     res_ct,
+                "unresolved":   0,
+                "regex_mentions": men_ct,
+                "status":       "skipped",
+            })
+            _log(run, "info", "extraction",
+                 f"{patient.code}: skipped (FinalRecord already exists)")
+            return result
+
         # ── 1a: PDF Extraction ────────────────────────────────────────────
         # Two-phase: native text first, then DocTR OCR for weak pages.
         page_rows = extract_pdf_pages(pdf_path)
@@ -151,8 +195,14 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
 
         # ── 1c: Regex Extraction ──────────────────────────────────────────
         # Run deterministic extraction on every note.
-        # Returns {note_id: [mention_dicts]}.
-        regex_results         = extract_all_notes(notes)
+        # Parallelised with threads: regex is I/O-safe (pure Python) and each
+        # note is fully independent, so ThreadPoolExecutor gives real overlap
+        # on multi-core machines.
+        from .services.regex_extractor import extract_note_mentions
+        _workers = min(config.MAX_WORKERS, max(1, len(notes)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=_workers) as _ex:
+            _results = list(_ex.map(extract_note_mentions, notes))
+        regex_results = {notes[i]["note_id"]: _results[i] for i in range(len(notes))}
         result["regex_mentions"] = sum(len(v) for v in regex_results.values())
 
         # ── 1d: Triage ────────────────────────────────────────────────────
@@ -340,13 +390,10 @@ def run_merge_phase(run: PipelineRun) -> None:
     """
     _update_run(run, status=PipelineRun.Status.MERGING)
 
-    # Find all patients that have documents in this run
     patients = Patient.objects.filter(documents__runs=run).distinct()
 
-    for patient in patients:
+    def _merge_one(patient: Patient) -> None:
         try:
-            # Fetch all mentions for this patient + run as plain dicts
-            # (avoids model instantiation overhead for large mention sets)
             mentions = list(
                 Mention.objects.filter(patient=patient, run=run).values(
                     "category", "label", "value", "normalized_value",
@@ -354,8 +401,6 @@ def run_merge_phase(run: PipelineRun) -> None:
                     "evidence_quote", "source_pages", "evidence_ids", "origin",
                 )
             )
-
-            # Gather page / note counts for stats
             doc        = patient.documents.first()
             page_count = PageLedger.objects.filter(document=doc).count() if doc else 0
             note_count = NoteLedger.objects.filter(document=doc).count() if doc else 0
@@ -367,7 +412,18 @@ def run_merge_phase(run: PipelineRun) -> None:
                 note_count   = note_count,
                 all_mentions = mentions,
             )
-
+            corrected_mentions = correct_all_mentions(final_data["mentions"])
+            deep_schema = build_deep_schema(
+                patient_code   = patient.code,
+                source_pdf     = doc.original_filename if doc else "",
+                mentions_flat  = corrected_mentions,
+                grouped_record = final_data["grouped_record"],
+                traceability   = final_data["traceability"],
+                stats          = final_data["stats"],
+                review_flags   = final_data["review_flags"],
+                page_count     = final_data["page_count"],
+                note_count     = final_data["note_count"],
+            )
             FinalRecord.objects.update_or_create(
                 patient  = patient,
                 defaults = {
@@ -376,15 +432,18 @@ def run_merge_phase(run: PipelineRun) -> None:
                     "note_count":     final_data["note_count"],
                     "mention_count":  final_data["stats"]["mentions_after_merge"],
                     "category_count": final_data["stats"]["categories_after_merge"],
-                    "grouped_record": final_data["grouped_record"],
+                    "grouped_record": deep_schema,
                     "review_flags":   final_data["review_flags"],
                     "traceability":   final_data["traceability"],
                     "stats":          final_data["stats"],
                 },
             )
-
         except Exception as exc:
             _log(run, "error", "merge", f"Merge failed for {patient.code}: {exc}")
+
+    merge_workers = min(config.MAX_WORKERS, max(1, patients.count()))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=merge_workers) as executor:
+        list(executor.map(_merge_one, patients))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -413,30 +472,40 @@ def run_full_pipeline(run: PipelineRun) -> None:
     documents = list(run.documents.all())
     _update_run(run, total_pdfs=len(documents))
 
-    # ── Phase 1: Extraction + Triage ─────────────────────────────────────
+    # ── Phase 1: Extraction + Triage (parallel across documents) ─────────
+    # CPU phases (native text extraction, page rendering, segmentation,
+    # regex) run in parallel threads. GPU phases (DocTR, EasyOCR) are
+    # serialised by a lock inside pdf_extractor.py so only one GPU kernel
+    # runs at a time, preventing OOM on single-GPU servers.
     doc_results = []
-    for i, doc in enumerate(documents):
-        try:
-            result = process_single_document(doc, run)
-            doc_results.append(result)
 
-            # Increment run-level counters after each document
-            _update_run(
-                run,
-                processed_pdfs   = i + 1,
-                total_notes      = run.total_notes      + result.get("note_count",   0),
-                resolved_notes   = run.resolved_notes   + result.get("resolved",     0),
-                unresolved_notes = run.unresolved_notes + result.get("unresolved",   0),
-                total_mentions   = run.total_mentions   + result.get("regex_mentions", 0),
-            )
+    def _process_doc_safe(doc: PDFDocument) -> dict:
+        try:
+            return process_single_document(doc, run)
         except Exception as exc:
             _log(run, "error", "extraction",
                  f"Document {doc.original_filename}: {exc}")
-            doc_results.append({
+            return {
                 "patient_code": doc.patient.code,
                 "status": "error",
                 "error": str(exc),
-            })
+                "note_count": 0, "resolved": 0, "unresolved": 0, "regex_mentions": 0,
+            }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=config.DOC_WORKERS) as executor:
+        future_to_doc = {executor.submit(_process_doc_safe, doc): doc for doc in documents}
+        for future in concurrent.futures.as_completed(future_to_doc):
+            result = future.result()
+            doc_results.append(result)
+            # Atomic DB-level increment — safe across concurrent completions
+            _inc_run(
+                run.id,
+                processed_pdfs   = 1,
+                total_notes      = result.get("note_count",    0),
+                resolved_notes   = result.get("resolved",      0),
+                unresolved_notes = result.get("unresolved",    0),
+                total_mentions   = result.get("regex_mentions", 0),
+            )
 
     # Release any GPU memory held by DocTR before loading the LLM
     release_cuda()
