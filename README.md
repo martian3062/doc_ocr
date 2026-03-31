@@ -1,4 +1,4 @@
-# TMH OCR Pipeline — Evolet
+# TMH OCR Pipeline — Evolet http://34.31.236.150:9000/
 
 > **Extracts structured clinical data from scanned & digital medical PDF reports.**
 > A multi-stage pipeline combining native PDF text extraction, DocTR OCR, embedded-image OCR (EasyOCR), regex NER, and a 4-bit quantised Qwen 2.5 LLM — served through a modern Django + HTMX + Alpine.js web interface.
