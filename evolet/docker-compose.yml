@@ -1,36 +1,23 @@
-version: "3.9"
-# ─────────────────────────────────────────────────────────────────────────────
-# Evolet OCR Pipeline — Docker Compose
-#
-#   GPU (L4/T4/A100):  docker compose --profile gpu up -d
-#   CPU only:          docker compose --profile cpu up -d
-#   Rebuild:           docker compose --profile gpu up -d --build
-#   Logs:              docker compose logs -f
-#   Stop:              docker compose --profile gpu down
-# ─────────────────────────────────────────────────────────────────────────────
-
 x-common: &common
-  image: evolet-pipeline:latest
   restart: unless-stopped
-  ports:
-    - "9000:9000"
   volumes:
     - evolet_media:/app/media
     - evolet_db:/app/data
-    - hf_cache:/root/.cache/huggingface   # persist model weights across restarts
+    - hf_cache:/root/.cache/huggingface
   environment:
     DJANGO_SETTINGS_MODULE: evolet.settings
+    EVOLET_DB_PATH: /app/data/db.sqlite3
     EVOLET_DOC_WORKERS: "4"
     EVOLET_USE_4BIT: "1"
-    # Optional: set your HuggingFace token if models need auth
-    # HF_TOKEN: "hf_xxx"
 
 services:
-  # ── GPU container (requires nvidia-container-toolkit) ──────────────────────
-  web-gpu:
+  # ── Backend: Django REST API ───────────────────────────────────────────────
+  backend:
     <<: *common
     build: .
-    container_name: evolet_gpu
+    container_name: evolet_backend
+    ports:
+      - "9000:9000"
     deploy:
       resources:
         reservations:
@@ -40,12 +27,19 @@ services:
               capabilities: [gpu]
     profiles: ["gpu"]
 
-  # ── CPU-only container (no GPU required) ───────────────────────────────────
-  web-cpu:
-    <<: *common
-    build: .
-    container_name: evolet_cpu
-    profiles: ["cpu"]
+  # ── Frontend: Next.js + GSAP + Three.js ────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+        - BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL:-http://backend:9000}
+    container_name: evolet_frontend
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:9000}
 
 volumes:
   evolet_media:

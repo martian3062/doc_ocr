@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter);
+  --font-outfit: var(--font-outfit);
+
+  --color-primary-50: oklch(0.96 0.01 257);
+  --color-primary-100: oklch(0.91 0.03 257);
+  --color-primary-200: oklch(0.83 0.06 257);
+  --color-primary-300: oklch(0.72 0.1 257);
+  --color-primary-400: oklch(0.58 0.15 257);
+  --color-primary-500: oklch(0.51 0.17 257);
+  --color-primary-600: oklch(0.43 0.16 257);
+  --color-primary-700: oklch(0.36 0.14 257);
+  --color-primary-800: oklch(0.29 0.11 257);
+  --color-primary-900: oklch(0.24 0.09 257);
+  --color-primary-950: oklch(0.18 0.07 257);
+
+  --animate-shimmer: shimmer 2s linear infinite;
+
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+}
+
+:root {
+  --background: #06060a;
+  --foreground: #f2f2f7;
+  --selection-bg: #4f46e5;
+  --selection-text: #ffffff;
+}
+
+::selection {
+  background-color: var(--selection-bg);
+  color: var(--selection-text);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Glassmorphism Utilities */
+.glass {
+  background: rgba(17, 17, 29, 0.6);
+  backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-hover:hover {
+  background: rgba(25, 25, 45, 0.8);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transform: translateY(-2px);
+}
+
+.glass-indigo {
+  background: rgba(79, 70, 229, 0.05);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+}
+
+/* Advanced Typography */
+.font-outfit {
+  font-family: var(--font-outfit), sans-serif;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #33334d;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4f46e5;
+}
+
+/* Dashboard Specifics */
+.chart-container {
+  mask-image: linear-gradient(to top, transparent, black 15%);
+}
+
+.mesh-bg {
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+    radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+}

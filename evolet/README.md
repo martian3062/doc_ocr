@@ -1,404 +1,854 @@
-# TMH OCR Pipeline — Evolet
+# Evolet
 
-> **Extracts structured clinical data from scanned & digital medical PDF reports.**
-> A multi-stage pipeline combining native PDF text extraction, DocTR OCR, embedded-image OCR (EasyOCR), regex NER, and a 4-bit quantised Qwen 2.5 LLM — served through a modern Django + HTMX + Alpine.js web interface.
+Evolet is a medical PDF intelligence system that extracts structured oncology information from scanned and digital hospital documents, stores the results in Django, and serves them through a modern Next.js frontend.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" />
-  <img src="https://img.shields.io/badge/Django-5.x-green?logo=django" />
-  <img src="https://img.shields.io/badge/CUDA-12.4-76B900?logo=nvidia" />
-  <img src="https://img.shields.io/badge/Docker-GPU%20ready-2496ED?logo=docker" />
-  <img src="https://img.shields.io/badge/LLM-Qwen%202.5%201.5B-orange" />
-</p>
+It combines:
 
----
+- OCR for scanned pages
+- native PDF text extraction for digital documents
+- regex-based entity extraction for speed and determinism
+- LLM-based extraction for deeper clinical understanding
+- a Django API and orchestration layer
+- a Next.js dashboard and patient explorer UI
 
-## Table of Contents
+This README explains what is in the project, why each major piece exists, and how the full system works from upload to patient profile.
 
-1. [Pipeline Architecture](#pipeline-architecture)
-2. [Tech Stack](#tech-stack)
-3. [Quick Start — Docker (recommended)](#quick-start--docker-recommended)
-4. [Quick Start — Local Dev](#quick-start--local-dev)
-5. [Web UI](#web-ui)
-6. [Configuration](#configuration)
-7. [Output Format](#output-format)
-8. [Project Structure](#project-structure)
-9. [Database Schema](#database-schema)
-10. [Performance & Hardware](#performance--hardware)
-11. [Requirements](#requirements)
+## 1. What This Project Does
 
----
+The platform reads hospital PDFs and turns them into structured patient data.
 
-## Pipeline Architecture
+Typical outputs include:
 
-Each uploaded PDF passes through nine sequential phases. Phases 1 and 3 run in parallel across documents via a thread pool.
+- patient identity and document grouping
+- diagnoses and disease mentions
+- medications and treatment references
+- symptoms and follow-up notes
+- timelines and evidence quotes
+- merged patient summaries
+- patient-level knowledge-map data for visualization
 
+At a high level:
+
+1. PDFs are imported into the system.
+2. Text is extracted by a fast native path or OCR path.
+3. Text is cleaned and split into smaller note-like sections.
+4. Regex extractors capture deterministic entities.
+5. An LLM fills in harder or less structured mentions.
+6. Mentions are merged into patient-level records.
+7. Django stores the data and exposes API endpoints.
+8. Next.js renders dashboard, patients, runs, documents, infra, and map pages.
+
+## 2. Current Architecture
+
+The project is now a hybrid system:
+
+- Backend: Django application in the repo root
+- Frontend: Next.js application in `frontend/`
+- Runtime: Docker Compose with separate backend and frontend containers
+- Database: SQLite persisted via Docker volume
+- Model cache: Hugging Face cache volume
+
+### Runtime ports
+
+- `3000`: Next.js frontend
+- `9000`: Django backend API
+
+### Request flow
+
+```text
+Browser
+  -> Next.js frontend (port 3000)
+  -> /api/v1/* rewrite
+  -> Django backend (port 9000)
+  -> SQLite / media / model cache
 ```
-PDF Upload
-    │
-    ├─ Phase 1 · Extraction  ──────────────────────────────────────────────┐
-    │   ├─ 1a. Native text    (PyMuPDF fast path — digital PDFs)           │
-    │   ├─ 1b. DocTR OCR      (GPU-accelerated — scanned / weak pages)     │  parallel
-    │   └─ 1c. Embedded imgs  (EasyOCR — text inside figures / stamps)     │  per-doc
-    │                                                                       │
-    ├─ Phase 2 · Clean & Segment ──────────────────────────────────────────┘
-    │   ├─ 2a. Text cleaner   (remove OCR noise, headers, duplicates)
-    │   ├─ 2b. Spell corrector (SymSpell fast-pass)
-    │   └─ 2c. Note segmenter  (split pages → clinical notes)
-    │
-    ├─ Phase 3 · Extract mentions ─────────────────────────────────────────┐
-    │   ├─ 3a. Regex NER      (deterministic; covers 60-80 % of mentions)  │  parallel
-    │   ├─ 3b. Skip-if-done   (SKIP_EXISTING — re-run safe)                │  per-note
-    │   └─ 3c. LLM queue      (notes not fully resolved by regex)          │
-    │                                                                       │
-    ├─ Phase 4 · LLM Inference ────────────────────────────────────────────┘
-    │   └─ Qwen 2.5 1.5B (4-bit, FP16 fallback) — adaptive batch sizes
-    │       SHORT notes → batch 6 · MEDIUM → batch 4 · LONG → batch 2
-    │
-    └─ Phase 5 · Merge & Output ───────────────────────────────────────────┐
-        ├─ Deduplicate regex + LLM mentions                                │  parallel
-        ├─ Build grouped_record (by category)                              │  per-patient
-        └─ Persist FinalRecord to DB + make downloadable JSON              │
+
+### Processing flow
+
+```text
+PDF
+  -> PyMuPDF / OCR
+  -> text cleaning
+  -> note segmentation
+  -> regex extraction
+  -> LLM extraction
+  -> merge + schema build
+  -> DB persistence
+  -> API response
+  -> frontend visualization
 ```
 
-**Design rationale:** Regex is fast and deterministic — it resolves the majority of mentions with zero GPU cost. The LLM handles only what regex misses, keeping VRAM usage low and per-PDF runtime under 30 s on an L4 GPU.
+## 3. Why These Technologies Were Used
 
----
+This stack is built around a practical goal: get accurate structured data from messy clinical PDFs without making the system too slow or too expensive.
 
-## Tech Stack
+### Backend and orchestration
 
-| Layer | Technology |
-|---|---|
-| **Web framework** | Django 5.x + Jinja2 templates |
-| **Async UI** | HTMX 2.x (server-driven partials) + Alpine.js 3.x |
-| **Styling** | Tailwind CSS CDN + Bulma + custom aurora CSS |
-| **OCR (pages)** | python-doctr (FP16 GPU singleton) |
-| **OCR (embedded images)** | EasyOCR (GPU, lazy-loaded) |
-| **PDF parsing** | PyMuPDF (native text + image extraction) |
-| **LLM** | Qwen/Qwen2.5-1.5B-Instruct via HuggingFace Transformers |
-| **Quantisation** | bitsandbytes 4-bit (saves ~1.5 GB VRAM) |
-| **Parallelism** | `concurrent.futures.ThreadPoolExecutor` (doc + merge phases) |
-| **DB** | SQLite3 (WAL mode, 30 s timeout) via Django ORM |
-| **Static files** | WhiteNoise (compressed + manifest) |
-| **Container** | Docker — CUDA 12.4 + cuDNN 9 on Ubuntu 22.04 |
-| **Deployment** | GCP VM (L4 24 GB GPU) · `docker compose --profile gpu up` |
+- `Django`
+  Used because it gives a strong ORM, admin, routing, forms, management commands, and a stable server-side foundation for data-heavy applications.
 
----
+- `SQLite`
+  Used because it keeps deployment simple and portable. For a single-VM pipeline product, SQLite is fast enough and easy to back up. The project uses a persisted Docker volume so the DB survives container rebuilds.
 
-## Quick Start — Docker (recommended)
+- `Django ORM`
+  Used to model patients, documents, mentions, runs, logs, and final records cleanly, while keeping the code readable and maintainable.
 
-### Prerequisites
+- `Management commands`
+  Used so the pipeline can be run manually, from scripts, or inside Docker without building a separate job runner.
 
-- Docker + Docker Compose v2
-- **GPU:** [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed on the host
-- **CPU-only:** no extra setup needed
+### PDF and OCR
 
-### 1 · Clone
+- `PyMuPDF`
+  Used for fast native text extraction from digital PDFs. This is much cheaper and faster than OCR when the PDF already contains selectable text.
+
+- `python-doctr`
+  Used for page OCR on scanned PDFs. It performs well on document-style OCR and works well with GPU acceleration.
+
+- `EasyOCR`
+  Used for text inside embedded images, stamps, screenshots, or page regions where native extraction is not enough.
+
+- `Pillow` and `OpenCV`
+  Used for image manipulation and preprocessing during OCR-related stages.
+
+### Information extraction
+
+- `Regex extraction`
+  Used first because it is deterministic, fast, explainable, and cheap. It handles many structured clinical mentions without needing a GPU or model inference.
+
+- `Qwen 2.5 Instruct via Transformers`
+  Used for harder extraction cases where clinical language is unstructured and regex rules are not sufficient.
+
+- `bitsandbytes`
+  Used for 4-bit quantization so the LLM uses less VRAM and is more practical on a single GPU VM.
+
+- `accelerate`
+  Used to help model loading and inference runtime behavior.
+
+- `json-repair` and `orjson`
+  Used because LLM JSON can be messy. These utilities help recover malformed responses and serialize data efficiently.
+
+- `rapidfuzz`
+  Used in merge and normalization workflows where fuzzy matching is helpful.
+
+- `symspellpy`
+  Used as a fast spell-correction pass for OCR-noisy text.
+
+### Frontend
+
+- `Next.js`
+  Used for a structured React app with file-based routing, production builds, and easy deployment in Docker.
+
+- `React`
+  Used to build interactive dashboards, patient pages, and rich client-side visualizations.
+
+- `Axios`
+  Used for API requests because it keeps the frontend API layer simple and explicit.
+
+- `Framer Motion`
+  Used for page transitions and motion polish across the UI.
+
+- `D3`
+  Used for the patient knowledge graph layout.
+
+- `Three.js`, `@react-three/fiber`, `@react-three/drei`
+  Used for immersive visual background and 3D-style interface effects.
+
+- `Lucide React`
+  Used for consistent iconography.
+
+- `clsx` and `tailwind-merge`
+  Used to manage dynamic class composition cleanly.
+
+- `GSAP`, `Nivo`, `Recharts`, `react-dropzone`
+  Installed to support rich animation, charts, and document upload interactions. Some are used lightly today, but they support the intended UI direction.
+
+### Deployment
+
+- `Docker`
+  Used so the backend and frontend run in reproducible containers.
+
+- `Docker Compose`
+  Used to manage the multi-container setup and persistent volumes.
+
+- `NVIDIA container runtime`
+  Used so OCR and LLM inference can access the VM GPU.
+
+## 4. Main Project Areas
+
+### 4.1 Root backend app
+
+The root of the repo contains the Django project and OCR pipeline.
+
+- `manage.py`
+  Django entry point for migrations, server start, and management commands.
+
+- `Dockerfile`
+  Builds the backend container.
+
+- `docker-compose.yml`
+  Defines the live multi-container deployment.
+
+- `db.sqlite3`
+  Local database file. In Docker production, the real database lives in the `evolet_db` volume and is mounted into `/app/data/db.sqlite3`.
+
+- `requirements.txt`
+  Python dependencies.
+
+### 4.2 Django project config
+
+Path: `evolet/settings.py`
+
+This folder contains core Django configuration:
+
+- `settings.py`
+  App config, middleware, DB configuration, static/media setup, CORS, and env-based settings.
+
+- `urls.py`
+  Root URL routing.
+
+- `jinja2.py`
+  Jinja support for the older server-rendered UI.
+
+- `wsgi.py` and `asgi.py`
+  Standard Django deployment entry points.
+
+### 4.3 Pipeline app
+
+Path: `pipeline/`
+
+This is the main business logic area.
+
+- `models.py`
+  Defines core entities such as patient, document, note, mention, final record, and pipeline run.
+
+- `views.py`
+  Older Django-rendered pages and actions.
+
+- `api_views.py`
+  JSON endpoints used by the Next.js frontend.
+
+- `urls.py`
+  Route definitions for dashboard, documents, patients, runs, QC, downloads, and `/api/v1/*`.
+
+- `orchestrator.py`
+  Coordinates the pipeline stages and run flow.
+
+### Services folder
+
+Path: `pipeline/services/`
+
+This folder keeps each concern separate:
+
+- `config.py`
+  Central place for pipeline config values and environment-driven tuning.
+
+- `pdf_extractor.py`
+  Native text extraction, OCR selection, and image extraction.
+
+- `text_cleaner.py`
+  Removes OCR noise and repeated junk.
+
+- `text_corrector.py`
+  Corrects common OCR misspellings and noisy words.
+
+- `note_segmenter.py`
+  Breaks long extracted text into smaller note-like chunks for extraction.
+
+- `regex_extractor.py`
+  Fast deterministic clinical mention extraction.
+
+- `llm_engine.py`
+  Loads and runs the model for advanced extraction.
+
+- `merger.py`
+  Deduplicates and merges extracted mentions.
+
+- `schema_builder.py`
+  Builds the structured patient-level output format.
+
+- `json_utils.py`
+  Repairs and validates model output.
+
+- `gpu_utils.py`
+  Detects GPU/CPU info and exposes infra metrics.
+
+- `photo_extractor.py`
+  Pulls patient profile image data when possible from documents.
+
+- `qc.py`
+  Quality-control summaries and coverage scoring.
+
+### 4.4 Frontend app
+
+Path: `frontend/`
+
+This is the user-facing app currently served on port `3000`.
+
+- `next.config.ts`
+  Rewrites `/api/v1/*` calls to the Django backend.
+
+- `Dockerfile`
+  Builds the production Next.js container.
+
+- `package.json`
+  Frontend dependencies and scripts.
+
+- `src/app`
+  App Router pages.
+
+- `src/components`
+  Shared UI and visualization components.
+
+- `src/lib/api.ts`
+  Frontend API client.
+
+### Frontend routes
+
+Path: `frontend/src/app/`
+
+- `/`
+  Dashboard/home page
+
+- `/patients`
+  Patient list
+
+- `/patients/[id]`
+  Patient detail profile
+
+- `/patients/[id]/knowledge-map`
+  Patient-specific knowledge graph page
+
+- `/documents`
+  Document list page
+
+- `/runs`
+  Pipeline runs page
+
+- `/infra`
+  Infrastructure/system information page
+
+- `/settings`
+  Settings placeholder page
+
+### Key frontend components
+
+- `frontend/src/components/KnowledgeGraph.tsx`
+  D3-based patient graph visualization.
+
+- `frontend/src/components/Sidebar.tsx`
+  App navigation.
+
+- `frontend/src/components/ThreeBackground.tsx`
+  Visual background and atmosphere layer.
+
+### 4.5 Templates and legacy UI
+
+Path: `templates/`
+
+The repo still contains the earlier Django/Jinja server-rendered UI. That part is useful for internal actions and as a fallback reference, but the main user-facing app is now the Next.js frontend.
+
+## 5. Full Working Process
+
+This is the most important section if you want to understand how the system behaves end to end.
+
+### Step 1: Import PDFs
+
+Documents enter the system through upload or import flows. Each PDF is stored as a `PDFDocument` linked to a `Patient` where possible.
+
+Why this step exists:
+
+- keeps original files available for traceability
+- allows reruns without re-uploading
+- gives each run a concrete source set
+
+### Step 2: Extract text
+
+The extraction layer chooses the best path per page:
+
+- native text from `PyMuPDF` when the PDF is digital
+- OCR from `DocTR` when the page is scanned
+- image OCR from `EasyOCR` for embedded image text
+
+Why this mixed strategy is used:
+
+- native extraction is fastest and most accurate for digital PDFs
+- OCR is necessary for scans
+- embedded images often contain clinically important text that normal PDF extraction misses
+
+### Step 3: Clean the text
+
+The system removes:
+
+- repeated OCR junk
+- broken spacing
+- duplicate headers/footers
+- obvious garbage introduced by OCR
+
+Why this matters:
+
+- raw OCR text is noisy
+- regex extraction gets much better after cleanup
+- LLM prompts become shorter and more reliable
+
+### Step 4: Correct obvious OCR mistakes
+
+SymSpell-based correction is applied where helpful.
+
+Why this matters:
+
+- medical text often has OCR distortions
+- small spelling repairs improve downstream extraction accuracy
+
+### Step 5: Split into note-sized chunks
+
+Large page text is segmented into smaller note-like units.
+
+Why this matters:
+
+- regex works better on smaller sections
+- LLM prompts stay manageable
+- traceability back to source sections becomes easier
+
+### Step 6: Regex extraction
+
+The system first runs rule-based extraction to detect mentions such as:
+
+- diagnosis
+- medication
+- symptom
+- procedure
+- pathology
+- follow-up
+- plan
+
+Why regex is used first:
+
+- fast
+- cheap
+- deterministic
+- explainable
+- reduces model workload
+
+### Step 7: LLM extraction
+
+The LLM handles harder sections that are not well covered by rules.
+
+Typical jobs:
+
+- interpreting semi-structured summaries
+- extracting mentions from free-form text
+- producing richer structured outputs
+
+Why an LLM is used:
+
+- hospital notes are inconsistent
+- clinical statements often do not follow strict templates
+- rules alone miss too many relationships and fields
+
+### Step 8: Merge and normalize
+
+Regex and LLM mentions are merged into patient-level structured data.
+
+This stage handles:
+
+- deduplication
+- grouping
+- value normalization
+- final output schema assembly
+
+Why this matters:
+
+- one patient may have many PDFs and many overlapping mentions
+- the frontend needs one coherent patient record, not hundreds of near-duplicates
+
+### Step 9: Persist to database
+
+The merged result is stored in Django models, including final record JSON and evidence-linked mention rows.
+
+Why this matters:
+
+- data becomes queryable
+- dashboard stats are fast
+- patient detail pages can be generated quickly
+- reruns and audits become possible
+
+### Step 10: Expose APIs
+
+The backend exposes REST-like endpoints used by the frontend, including:
+
+- `/api/v1/dashboard`
+- `/api/v1/documents`
+- `/api/v1/patients`
+- `/api/v1/patients/<id>`
+- `/api/v1/patients/<id>/knowledge-map`
+- `/api/v1/runs`
+- `/api/v1/runs/<id>`
+
+Both slash and no-slash versions are supported to avoid frontend routing issues.
+
+### Step 11: Render in Next.js
+
+The frontend fetches backend data and renders:
+
+- dashboard metrics
+- patient lists
+- patient summaries
+- document inventory
+- runs and status
+- infrastructure details
+- graph-based knowledge views
+
+Why the frontend is separate:
+
+- cleaner UI iteration
+- better component reuse
+- easier visual polish and rich interactions
+- clearer separation from backend extraction logic
+
+## 6. What the Knowledge Map Is Doing
+
+The current knowledge map is a patient-level mention visualization.
+
+It is based on:
+
+- extracted `Mention` rows
+- grouped mention categories
+- patient-specific API output
+
+Current behavior:
+
+- creates category nodes
+- creates mention nodes
+- connects each mention to its category
+
+This means the graph is currently a structured evidence map, not a full clinical reasoning graph.
+
+It does not yet infer relationships like:
+
+- drug treats diagnosis
+- symptom caused by condition
+- progression from one date to another
+
+That can be added later through relation extraction or graph modeling.
+
+## 7. Current API and UI Contract
+
+The frontend talks to the backend through same-origin `/api/v1/*` calls.
+
+That works because `frontend/next.config.ts` rewrites them to the backend container.
+
+This design was used to avoid:
+
+- browser CORS issues
+- direct public exposure of backend URLs in client code
+- environment mismatch between local/dev/VM setups
+
+## 8. Data Model Summary
+
+The main backend entities are:
+
+- `Patient`
+  One logical patient profile.
+
+- `PDFDocument`
+  One uploaded/imported PDF linked to a patient.
+
+- `PageLedger`
+  Per-page extracted data.
+
+- `NoteLedger`
+  Smaller text chunks/notes derived from pages.
+
+- `Mention`
+  Structured extracted evidence item with label, value, category, confidence, and source.
+
+- `FinalRecord`
+  Final merged patient summary JSON.
+
+- `PipelineRun`
+  One processing run over one or more documents.
+
+- `ProcessingLog`
+  Timestamped run log entries.
+
+## 9. Detailed Folder Structure
+
+```text
+evolet/
+├── Dockerfile
+├── docker-compose.yml
+├── docker-entrypoint.sh
+├── manage.py
+├── requirements.txt
+├── README.md
+├── db.sqlite3
+├── docs/
+├── data/
+├── media/
+├── static/
+├── templates/
+├── evolet/
+│   ├── __init__.py
+│   ├── asgi.py
+│   ├── jinja2.py
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── pipeline/
+│   ├── __init__.py
+│   ├── admin.py
+│   ├── api_views.py
+│   ├── apps.py
+│   ├── forms.py
+│   ├── models.py
+│   ├── orchestrator.py
+│   ├── urls.py
+│   ├── views.py
+│   ├── management/
+│   │   └── commands/
+│   │       ├── import_folder.py
+│   │       ├── import_json_records.py
+│   │       └── run_pipeline.py
+│   └── services/
+│       ├── config.py
+│       ├── gpu_utils.py
+│       ├── json_utils.py
+│       ├── llm_engine.py
+│       ├── merger.py
+│       ├── note_segmenter.py
+│       ├── pdf_extractor.py
+│       ├── photo_extractor.py
+│       ├── qc.py
+│       ├── regex_extractor.py
+│       ├── schema_builder.py
+│       ├── text_cleaner.py
+│       └── text_corrector.py
+└── frontend/
+    ├── Dockerfile
+    ├── next.config.ts
+    ├── package.json
+    ├── public/
+    └── src/
+        ├── app/
+        │   ├── documents/page.tsx
+        │   ├── infra/page.tsx
+        │   ├── map/page.tsx
+        │   ├── patients/page.tsx
+        │   ├── patients/[id]/page.tsx
+        │   ├── patients/[id]/knowledge-map/page.tsx
+        │   ├── runs/page.tsx
+        │   ├── settings/page.tsx
+        │   ├── globals.css
+        │   ├── layout.tsx
+        │   └── page.tsx
+        ├── components/
+        │   ├── KnowledgeGraph.tsx
+        │   ├── Sidebar.tsx
+        │   └── ThreeBackground.tsx
+        └── lib/
+            ├── api.ts
+            └── utils.ts
+```
+
+## 10. Docker and Deployment
+
+The main production deployment uses Docker Compose.
+
+### Containers
+
+- `evolet_backend`
+  Django backend and OCR/LLM runtime
+
+- `evolet_frontend`
+  Next.js frontend
+
+### Named volumes
+
+- `evolet_media`
+  Stores uploaded/generated media
+
+- `evolet_db`
+  Stores the persisted SQLite database
+
+- `hf_cache`
+  Stores downloaded model weights and caches
+
+### Important deployment decision
+
+The backend now reads the database path from `EVOLET_DB_PATH`.
+
+This was added so Docker uses the persisted DB volume path:
+
+```text
+/app/data/db.sqlite3
+```
+
+instead of accidentally using an internal throwaway container file.
+
+### Frontend API strategy
+
+The frontend uses:
+
+- `BACKEND_INTERNAL_URL=http://backend:9000`
+
+inside Docker, and rewrites `/api/v1/*` to that internal backend URL.
+
+This keeps:
+
+- browser requests simple
+- Docker networking internal
+- client code environment-agnostic
+
+## 11. Local Development
+
+### Backend
 
 ```bash
-git clone https://github.com/martian3062/TMH-OcR.git
-cd TMH-OcR
-```
-
-### 2 · Build
-
-```bash
-docker build -t evolet-pipeline .
-```
-
-> **Disk space note:** the build needs ~15 GB free (PyTorch CUDA wheels + all deps).
-> Run `docker system prune -f` first if space is tight.
-
-### 3 · Run
-
-```bash
-# GPU server (L4 / T4 / A100)
-docker compose --profile gpu up -d
-
-# CPU-only machine
-docker compose --profile cpu up -d
-```
-
-The app starts at **http://localhost:9000** (or your server's public IP).
-
-### 4 · Useful commands
-
-```bash
-# Follow live logs
-docker compose logs -f
-
-# Rebuild after code changes
-docker compose --profile gpu up -d --build
-
-# Stop
-docker compose --profile gpu down
-
-# Shell into running container
-docker exec -it evolet_gpu bash
-```
-
-### Persistent volumes
-
-| Volume | Container path | Contains |
-|---|---|---|
-| `evolet_media` | `/app/media` | Uploaded PDF files |
-| `evolet_db` | `/app/data` | SQLite database |
-| `hf_cache` | `/root/.cache/huggingface` | Downloaded LLM + OCR model weights |
-
-Model weights (~3 GB) are downloaded on first pipeline run and cached in the `hf_cache` volume — subsequent runs start immediately.
-
----
-
-## Quick Start — Local Dev
-
-```bash
-# 1. Create virtual environment
-python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-
-# 2. Install PyTorch (CUDA) first, then remaining deps
-pip install torch==2.6.0+cu124 torchvision==0.21.0+cu124 \
-    --index-url https://download.pytorch.org/whl/cu124
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
-
-# 3. Initialise database
 python manage.py migrate
-
-# 4. Collect static files
-python manage.py collectstatic --noinput
-
-# 5. Start server
 python manage.py runserver 0.0.0.0:9000
 ```
 
-Open **http://localhost:9000**.
+### Frontend
 
----
-
-## Web UI
-
-### Pages
-
-| Page | Description |
-|---|---|
-| **Dashboard** | Live stats (patients · PDFs · mentions · GPU), hardware/ETA panel, recent activity |
-| **Upload** | Drag-and-drop multi-PDF upload with HTMX progress and per-file previews |
-| **Patients** | Searchable patient list with HTMX delete confirmation |
-| **Patient Detail** | Category accordion (Diagnosis · Medication · Imaging · Notes), raw JSON viewer, **3D knowledge graph** |
-| **Runs** | Start, monitor, and cancel pipeline runs; step-wise live progress tracker |
-| **Run Detail** | Per-stage status badges, collapsible execution log (INFO / WARN / ERR) |
-| **QC Summary** | Coverage bars, missing-field badges, flagged-only filter |
-
-### UI highlights
-
-- **Aurora mesh background** — 5 animated gradient orbs with grain overlay
-- **Dark / light mode** — persisted in `localStorage`, system-preference aware
-- **3D knowledge graph** — Patient → Category → Finding → Date radial tree, Phong-shaded spheres, bloom glow, flowing link particles (Three.js + 3d-force-graph)
-- **Hardware / ETA panel** — detects GPU model, VRAM, CPU, RAM; shows per-PDF time estimate and tier badge
-- **HTMX live updates** — progress polling every 3 s, no full-page reloads
-- **Cancel run** — stops pipeline after current step; safe for re-run
-- **Delete patient / document** — cascade-deletes all related data with HTMX confirmation
-- **`⌘K` spotlight** — keyboard quick-navigation
-- **Toast notifications** — async feedback for uploads, errors, completions
-
----
-
-## Configuration
-
-All tuneable parameters are environment variables — no code changes needed.
-
-### Docker Compose overrides
-
-Edit the `environment:` block in `docker-compose.yml`:
-
-```yaml
-environment:
-  DJANGO_SECRET_KEY: "your-strong-secret-here"
-  DJANGO_DEBUG: "0"
-  EVOLET_MODEL_ID: "Qwen/Qwen2.5-1.5B-Instruct"
-  EVOLET_USE_4BIT: "1"
-  EVOLET_DOC_WORKERS: "4"
-  HF_TOKEN: "hf_xxx"           # only for gated HuggingFace models
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-### Full variable reference
+Then open:
 
-| Variable | Default | Description |
-|---|---|---|
-| `DJANGO_SECRET_KEY` | (dev key) | **Change in production.** Django secret key |
-| `DJANGO_DEBUG` | `1` | Set to `0` in production |
-| `EVOLET_MODEL_ID` | `Qwen/Qwen2.5-1.5B-Instruct` | HuggingFace model ID for LLM phase |
-| `EVOLET_USE_4BIT` | `1` | 4-bit quantisation — saves ~1.5 GB VRAM |
-| `EVOLET_DOC_WORKERS` | `4` | Thread pool size for Phase 1 (extraction) |
-| `EVOLET_MAX_WORKERS` | `4` | Thread pool size for other parallel stages |
-| `HF_TOKEN` | _(empty)_ | HuggingFace auth token for gated models |
+- frontend: `http://localhost:3000`
+- backend API: `http://localhost:9000`
 
----
+## 12. Docker Run
 
-## Output Format
+From the repo root:
 
-Each patient record stored in the database and available as downloadable JSON:
-
-```json
-{
-  "patient_code": "TMH_2023_001",
-  "mentions": [
-    {
-      "category": "diagnosis",
-      "label": "diagnosis",
-      "value": "Renal Cell Carcinoma, Stage III",
-      "date_text": "15.03.2023",
-      "certainty": "confirmed",
-      "evidence_quote": "Final Diagnosis: RCC Stage III",
-      "source_pages": [2],
-      "origin": "regex"
-    },
-    {
-      "category": "medication",
-      "label": "drug",
-      "value": "Tab Sunitinib 50mg OD",
-      "date_text": "20.03.2023",
-      "certainty": "confirmed",
-      "evidence_quote": "Tab Sunitinib 50mg OD for 4 weeks",
-      "source_pages": [4],
-      "origin": "llm"
-    }
-  ],
-  "grouped_record": {
-    "diagnosis":  ["Renal Cell Carcinoma, Stage III"],
-    "medication": ["Tab Sunitinib 50mg OD"],
-    "imaging":    ["CT Abdomen — March 2023"],
-    "follow_up":  ["Review after 4 weeks"]
-  },
-  "stats": {
-    "page_count": 12,
-    "note_count": 8,
-    "mentions_after_merge": 14
-  }
-}
+```bash
+docker compose build
+docker compose up -d
 ```
 
-**Extracted categories:** `diagnosis` · `medication` · `imaging` · `pathology` · `symptom` · `lab` · `genomics` · `surgery` · `radiotherapy` · `plan` · `follow_up` · `performance_status` · `procedure` · `status` · `other`
+Useful commands:
 
----
-
-## Project Structure
-
-```
-evolet/
-├── Dockerfile                    # CUDA 12.4 + cuDNN 9, Ubuntu 22.04
-├── docker-compose.yml            # GPU + CPU profiles, 3 named volumes
-├── docker-entrypoint.sh          # migrate → collectstatic → runserver
-├── requirements.txt              # Python deps (torch installed separately)
-├── manage.py
-│
-├── evolet/                       # Django project config
-│   ├── settings.py               # Env-var driven, SQLite, WhiteNoise
-│   ├── urls.py
-│   ├── wsgi.py
-│   └── jinja2.py                 # Jinja2 environment (url, static, tojson)
-│
-├── pipeline/                     # Core Django app
-│   ├── models.py                 # Patient → PDFDocument → Page/Note → Mention → FinalRecord
-│   ├── views.py                  # Dashboard, upload, run, patient, QC, cancel, delete, system API
-│   ├── urls.py                   # All URL patterns
-│   ├── orchestrator.py           # Phase coordinator (ThreadPoolExecutor, F() atomics)
-│   │
-│   └── services/                 # One file per concern
-│       ├── config.py             # All tuneable knobs (env-var overridable)
-│       ├── pdf_extractor.py      # Native text + DocTR OCR + EasyOCR (3 phases, thread-safe singletons)
-│       ├── text_cleaner.py       # OCR artifact removal, deduplication
-│       ├── text_corrector.py     # SymSpell spell correction
-│       ├── note_segmenter.py     # Page → clinical note splitting + regex triage
-│       ├── regex_extractor.py    # Deterministic mention extraction (15 categories)
-│       ├── llm_engine.py         # Qwen inference + adaptive batching (SHORT/MEDIUM/LONG)
-│       ├── merger.py             # Deduplication + final record assembly
-│       ├── schema_builder.py     # Output schema construction
-│       ├── qc.py                 # Quality metrics + coverage scoring
-│       ├── photo_extractor.py    # Patient photo from PDF page 1
-│       ├── json_utils.py         # Robust LLM JSON parser (4-stage fallback)
-│       └── gpu_utils.py          # CUDA/CPU detect, VRAM, system_info() for ETA
-│
-├── templates/
-│   ├── base.html                 # Nav, dark mode, aurora background, toasts, spotlight
-│   ├── dashboard.html            # Stats + hardware/ETA panel
-│   └── pipeline/
-│       ├── upload.html
-│       ├── patient_list.html
-│       ├── patient_detail.html   # Accordion + 3D knowledge graph + JSON viewer
-│       ├── run_list.html
-│       ├── run_detail.html       # Live log viewer + cancel button
-│       ├── qc_summary.html
-│       ├── components/           # Reusable Jinja2 partials (card, status_badge, progress_bar)
-│       └── partials/             # HTMX response fragments (patient_rows, run_progress, gpu_status …)
-│
-└── static/
-    ├── css/main.css              # Aurora mesh, Bulma dark-mode patches, stagger animations
-    └── js/app.js                 # Alpine stores: toasts, spotlight, jsonViewer, etaPanel, uploadHandler
+```bash
+docker compose logs -f frontend
+docker compose logs -f backend
+docker compose ps
+docker compose restart frontend
+docker compose restart backend
 ```
 
----
+## 13. Common Commands
 
-## Database Schema
+### Run the pipeline
 
-```
-Patient  ──<  PDFDocument  ──<  PageLedger    (one row per PDF page)
-                            └─<  NoteLedger    (one row per clinical note)
-
-Mention         >──  Patient / PDFDocument / PipelineRun / NoteLedger
-FinalRecord     >──  Patient                  (one merged JSON record per patient)
-PipelineRun     >──<  PDFDocument             (many-to-many via M2M field)
-ProcessingLog   >──  PipelineRun              (timestamped INFO / WARN / ERR entries)
+```bash
+python manage.py run_pipeline
 ```
 
----
+### Import a folder of PDFs
 
-## Performance & Hardware
+```bash
+python manage.py import_folder "C:\path\to\pdfs"
+```
 
-### Benchmarks (GCP L4 — 24 GB VRAM)
+### Import JSON records
 
-| Stage | Time per PDF |
-|---|---|
-| Native text extraction | < 1 s |
-| DocTR OCR (scanned pages) | 3–8 s |
-| EasyOCR (embedded images) | 1–4 s |
-| Regex NER | < 0.5 s |
-| LLM (Qwen 2.5 1.5B, 4-bit) | 5–15 s |
-| Merge & persist | < 1 s |
-| **Total (typical)** | **~25–30 s** |
+```bash
+python manage.py import_json_records "C:\path\to\records"
+```
 
-### Parallelism
+### Django admin/dev commands
 
-- **Phase 1** (PDF extraction): `DOC_WORKERS` threads process documents concurrently
-- **Phase 3** (regex): parallel per-note extraction within each document
-- **Phase 5** (merge): parallel per-patient merge
-- **Thread safety**: GPU singletons guarded by `_gpu_lock` + double-checked locking; DB counter updates via `F()` expressions
+```bash
+python manage.py makemigrations
+python manage.py migrate
+python manage.py collectstatic --noinput
+```
 
-### Compute tiers
+## 14. Troubleshooting
 
-| Tier | Hardware | ETA |
-|---|---|---|
-| `gpu_fast` | GPU ≥ 20 GB VRAM | ~20 s/PDF |
-| `gpu_std` | GPU < 20 GB VRAM | ~40 s/PDF |
-| `cpu` | CPU only | ~180 s/PDF |
+### Patient page loads but crashes in browser
 
----
+Likely causes:
 
-## Requirements
+- stale frontend bundle
+- frontend/backend route mismatch
+- API returning a schema shape the page does not expect
 
-| Requirement | Minimum |
-|---|---|
-| Python | 3.10+ |
-| GPU VRAM | 6 GB (24 GB recommended for full parallel batch runs) |
-| CUDA | 12.4 (container provides this) |
-| Disk (build) | 15 GB free for Docker build |
-| Disk (runtime) | ~3 GB for model weights + PDF storage |
-| RAM | 8 GB+ |
+What helped in this project:
 
-> **CPU-only mode** works via `docker compose --profile cpu up -d` but the LLM phase takes ~3 min per note instead of ~5 s.
+- support both slash and no-slash API routes
+- use same-origin frontend API rewrites
+- force a clean frontend rebuild with `--no-cache`
 
----
+### `/settings` or another route returns 404 in frontend
 
-## License
+Likely cause:
 
-Proprietary — 4BaseCare / TMH Project. All rights reserved.
+- stale Next.js image was still being served
+
+Fix:
+
+```bash
+docker rm -f evolet_frontend
+docker rmi evolet-frontend:latest
+docker compose build --no-cache frontend
+docker compose up -d frontend
+```
+
+### Backend shows empty or wrong data
+
+Likely cause:
+
+- Django is reading the wrong SQLite path
+
+Fix:
+
+- confirm `EVOLET_DB_PATH=/app/data/db.sqlite3`
+- confirm the volume-mounted DB contains the real data
+
+### Docker disk space issues
+
+Useful cleanup:
+
+```bash
+docker container prune -f
+docker image prune -f
+docker builder prune -af
+```
+
+## 15. What Is Live Today
+
+The app currently has working routes for:
+
+- dashboard
+- patients
+- patient detail
+- patient knowledge map
+- documents
+- runs
+- infra
+- settings
+
+The current patient profile rendering is designed to handle deeper `final_record.grouped` structures, not just simple arrays. That matters because some patient records use a nested schema version and would otherwise crash the UI.
+
+## 16. What Can Be Improved Next
+
+Strong next improvements would be:
+
+- move from SQLite to Postgres if multi-user write load grows
+- add formal relation extraction for the knowledge map
+- add auth and role-based access control
+- move long pipeline jobs to a dedicated queue worker
+- add automated smoke tests for critical frontend routes
+- add health checks and monitoring for the VM deployment
+
+## 17. In One Sentence
+
+Evolet is a hybrid OCR + clinical extraction platform where Django handles ingestion, extraction, storage, and APIs, while Next.js handles the user experience and visualization layer on top of those structured patient records.

@@ -1,6 +1,6 @@
 """Pipeline URL configuration."""
 from django.urls import path
-from . import views
+from . import views, api_views
 
 app_name = "pipeline"
 
@@ -39,4 +39,20 @@ urlpatterns = [
     path("api/progress/<uuid:run_id>/", views.run_progress, name="run_progress"),
     path("api/gpu/", views.api_gpu_status, name="api_gpu_status"),
     path("api/system/", views.api_system_info, name="api_system_info"),
+
+    # REST API Endpoints (Next.js)
+    path("api/v1/dashboard", api_views.api_dashboard, name="api_dashboard_noslash"),
+    path("api/v1/dashboard/", api_views.api_dashboard, name="api_dashboard"),
+    path("api/v1/documents", api_views.api_document_list, name="api_documents_noslash"),
+    path("api/v1/documents/", api_views.api_document_list, name="api_documents"),
+    path("api/v1/patients", api_views.api_patient_list, name="api_patients_noslash"),
+    path("api/v1/patients/", api_views.api_patient_list, name="api_patients"),
+    path("api/v1/patients/<int:patient_id>", api_views.api_patient_detail, name="api_patient_detail_noslash"),
+    path("api/v1/patients/<int:patient_id>/", api_views.api_patient_detail, name="api_patient_detail"),
+    path("api/v1/patients/<int:patient_id>/knowledge-map", api_views.api_knowledge_map, name="api_knowledge_map_noslash"),
+    path("api/v1/patients/<int:patient_id>/knowledge-map/", api_views.api_knowledge_map, name="api_knowledge_map"),
+    path("api/v1/runs", api_views.api_run_list, name="api_runs_noslash"),
+    path("api/v1/runs/", api_views.api_run_list, name="api_runs"),
+    path("api/v1/runs/<uuid:run_id>", api_views.api_run_detail, name="api_run_detail_noslash"),
+    path("api/v1/runs/<uuid:run_id>/", api_views.api_run_detail, name="api_run_detail"),
 ]
