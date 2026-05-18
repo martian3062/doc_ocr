@@ -97,16 +97,17 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-10">
-      <header className="flex flex-col gap-5 border-b border-slate-800 pb-8 lg:flex-row lg:items-end lg:justify-between">
+      <header className="relative overflow-hidden rounded-3xl border border-sky-200/70 bg-white/70 p-7 shadow-[0_24px_90px_rgba(56,189,248,0.18)] backdrop-blur-2xl lg:flex lg:items-end lg:justify-between">
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_10%,rgba(255,255,255,0.95),transparent_30%),radial-gradient(circle_at_88%_0%,rgba(111,220,255,0.44),transparent_34%)]" />
         <div>
-          <div className="mb-3 flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-cyan-300">
+          <div className="mb-3 flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-sky-500">
             <ShieldCheck size={18} />
             Evidence-native clinical reader
           </div>
-          <h1 className="font-outfit text-4xl font-black tracking-tight text-white">
+          <h1 className="font-outfit text-4xl font-black tracking-tight text-sky-950">
             doc-reader
           </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
             LLM-first document understanding with grouped text extraction,
             adaptive schemas, validation, relation extraction, and exact source
             provenance.
@@ -115,13 +116,13 @@ export default function Dashboard() {
         <div className="flex gap-3">
           <Link
             href="/documents"
-            className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-cyan-400"
+            className="rounded-lg bg-gradient-to-r from-white via-sky-200 to-cyan-400 px-4 py-2 text-sm font-bold text-sky-950 shadow-[0_12px_34px_rgba(56,189,248,0.26)] transition hover:brightness-105"
           >
             Documents
           </Link>
           <Link
             href="/runs"
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-bold text-slate-200 transition hover:border-slate-500"
+            className="rounded-lg border border-sky-200 bg-white/70 px-4 py-2 text-sm font-bold text-sky-700 transition hover:border-sky-400 hover:bg-white"
           >
             Runs
           </Link>

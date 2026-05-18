@@ -367,6 +367,43 @@ export default function PatientDetailPage() {
             </div>
           </div>
 
+          <div className="overflow-hidden rounded-[2.5rem] bg-[#11111d]/50 backdrop-blur-xl border border-slate-800/40">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800/60 p-5">
+              <div className="min-w-0">
+                <h3 className="font-black text-white text-sm font-outfit uppercase tracking-widest text-cyan-400">
+                  PDF Preview
+                </h3>
+                <p className="mt-1 truncate text-[11px] font-bold text-slate-500">
+                  {selectedDocument?.filename || "No source selected"}
+                </p>
+              </div>
+              {selectedDocument?.pdf_url && (
+                <a
+                  href={selectedDocument.pdf_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded-xl border border-slate-800 bg-slate-900/50 p-2 text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"
+                  title="Open PDF in a new tab"
+                >
+                  <ExternalLink size={15} />
+                </a>
+              )}
+            </div>
+            <div className="h-[66vh] min-h-[540px] bg-slate-950">
+              {selectedDocument?.pdf_url ? (
+                <iframe
+                  src={`${selectedDocument.pdf_url}#view=FitH`}
+                  title={`PDF preview for ${selectedDocument.filename}`}
+                  className="h-full w-full bg-white"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center p-6 text-center text-xs font-bold text-slate-500">
+                  Select a source PDF to preview it beside the extracted record.
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="p-8 rounded-[2.5rem] bg-[#11111d]/50 backdrop-blur-xl border border-slate-800/40">
             <h3 className="font-black text-white text-sm font-outfit mb-6 flex items-center gap-3 uppercase tracking-widest text-emerald-400">
               <Activity size={18} /> Intelligence Metrics

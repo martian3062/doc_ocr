@@ -30,7 +30,7 @@ export function Sidebar() {
     <motion.div
       initial={false}
       animate={{ width: collapsed ? 80 : 260 }}
-      className="relative z-50 h-screen border-r border-[#1e1e2d] bg-[#0d0d16] flex flex-col transition-[width] ease-in-out duration-300"
+      className="relative z-50 h-screen border-r border-sky-200/70 bg-white/70 flex flex-col transition-[width] ease-in-out duration-300 shadow-[18px_0_70px_rgba(67,181,232,0.16)] backdrop-blur-2xl"
     >
       <div className="flex items-center justify-between p-6 overflow-hidden">
         <AnimatePresence mode="wait">
@@ -41,10 +41,10 @@ export function Sidebar() {
               exit={{ opacity: 0, x: -10 }}
               className="flex items-center gap-3"
             >
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center">
-                <Database className="w-5 h-5 text-white" />
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-white via-sky-200 to-cyan-400 flex items-center justify-center shadow-[0_10px_28px_rgba(56,189,248,0.3)]">
+                <Database className="w-5 h-5 text-sky-700" />
               </div>
-              <span className="text-xl font-bold font-outfit tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+              <span className="text-xl font-bold font-outfit tracking-tight bg-gradient-to-r from-sky-950 via-sky-500 to-cyan-300 bg-clip-text text-transparent">
                 doc-reader
               </span>
             </motion.div>
@@ -53,7 +53,7 @@ export function Sidebar() {
         
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-2 rounded-lg hover:bg-slate-800 transition-colors text-slate-400"
+          className="p-2 rounded-lg text-sky-600 transition-colors hover:bg-sky-100/80"
         >
           {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
         </button>
@@ -68,24 +68,24 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-4 px-4 py-3 rounded-xl transition-all group relative overflow-hidden",
                   isActive 
-                    ? "bg-indigo-500/10 text-indigo-400" 
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                    ? "bg-sky-100/80 text-sky-700 shadow-[0_12px_34px_rgba(56,189,248,0.18)]" 
+                    : "text-slate-600 hover:text-sky-700 hover:bg-white/75"
                 )}
               >
                 {isActive && (
                   <motion.div 
                     layoutId="active-indicator"
-                    className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-r-full"
+                    className="absolute left-0 top-0 bottom-0 w-1 bg-sky-400 rounded-r-full"
                   />
                 )}
-                <item.icon size={22} className={cn("shrink-0", isActive && "text-indigo-500")} />
+                <item.icon size={22} className={cn("shrink-0", isActive && "text-sky-500")} />
                 {!collapsed && (
                   <span className="text-[15px] font-medium transition-opacity duration-200">
                     {item.name}
                   </span>
                 )}
                 {collapsed && (
-                  <div className="absolute left-16 bg-slate-900 border border-slate-800 px-3 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[100]">
+                  <div className="absolute left-16 bg-white/90 border border-sky-200 px-3 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[100] shadow-lg">
                     {item.name}
                   </div>
                 )}
@@ -95,10 +95,10 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-[#1e1e2d]">
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-900/50 border border-slate-800/50">
-          <div className="w-10 h-10 rounded-full bg-cyan-500/10 border border-cyan-500/20 overflow-hidden shrink-0 flex items-center justify-center">
-            <Database size={18} className="text-cyan-300" />
+      <div className="p-4 border-t border-sky-200/70">
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-white/75 border border-sky-200/70 shadow-[0_12px_36px_rgba(56,189,248,0.16)]">
+          <div className="w-10 h-10 rounded-full bg-sky-100/80 border border-sky-200 overflow-hidden shrink-0 flex items-center justify-center">
+            <Database size={18} className="text-sky-500" />
           </div>
           {!collapsed && (
             <div className="overflow-hidden">

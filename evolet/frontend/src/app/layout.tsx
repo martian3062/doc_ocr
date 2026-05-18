@@ -18,11 +18,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.variable} ${outfit.variable} font-sans bg-[#06060a] text-slate-200 overflow-x-hidden`}>
+      <body className={`${inter.variable} ${outfit.variable} font-sans bg-[#f7fcff] text-slate-800 overflow-x-hidden`}>
         <div className="flex min-h-screen">
           <Sidebar />
           <main className="flex-1 transition-all duration-300 relative">
-            <div className="absolute inset-0 mesh-bg opacity-30 -z-10" />
+            <div className="absolute inset-0 mesh-bg opacity-100 -z-10" />
             {children}
           </main>
         </div>
