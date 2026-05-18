@@ -2,7 +2,22 @@
 
 `doc-reader` is an evidence-native clinical document reader for hospital PDFs, scanned reports, mixed-layout records, and difficult handwritten notes. It is built to turn source documents into traceable structured medical data, not just loose OCR text.
 
-The current default system is LLM-oriented: native PDF text is grouped into clinical notes, every useful note goes through the extraction LLM, and a MedGemma/Gemma-style validation LLM audits the merged patient record. Heavy OCR/layout engines such as TrOCR, GOT-OCR, Docling, Surya, PaddleOCR, and YOLO are optional comparison backends, not the default path.
+The current default system is LLM-first: native PDF text is grouped into document notes, every useful note goes through the extraction LLM, and a validation LLM audits the merged record. Heavy OCR/layout engines such as TrOCR, GOT-OCR, Docling, Surya, PaddleOCR, and YOLO are optional comparison backends, not the default path.
+
+## Current Update
+
+Recent work moved the app from a parser/OCR-heavy clinical demo into the current `doc_ocr` GitHub project:
+
+- published the repo to `https://github.com/martian3062/doc_ocr.git`
+- slimmed the default dependency path so `requirements.txt` avoids heavy OCR/layout packages
+- moved optional CV/OCR/parser packages into `evolet/requirements-advanced.txt`
+- made extraction LLM-first by default with `DOC_READER_LLM_EXTRACT_ALL_NOTES=1`
+- added model validation with MedGemma primary and Qwen fallback
+- replaced the old hardcoded oncology output shape with adaptive schema `3.0-adaptive`
+- fixed Docker Compose so normal `docker compose up -d --build` works without a broken profile dependency
+- added a bright sparkling white/sky-blue frontend theme
+- added an inline PDF preview to patient detail so the source PDF stays on the left while extracted fields remain on the right
+- verified frontend production builds with `npm run build`
 
 ## What It Does
 
@@ -46,9 +61,20 @@ Active runtime names:
 
 Legacy `EVOLET_*` variables are still accepted as compatibility fallbacks so older VM environments can keep running while the deployment is migrated.
 
-## OCR Stack
+## Default LLM Stack
 
-## Parser Stack
+The default runtime is intentionally light:
+
+- PyMuPDF/native PDF text extraction
+- grouped note segmentation
+- `Qwen/Qwen2.5-1.5B-Instruct` extraction
+- MedGemma validation when accessible
+- `Qwen/Qwen2.5-1.5B-Instruct` validation fallback when MedGemma does not return strict JSON or model access is unavailable
+- adaptive JSON schema based on the categories the LLM actually extracts
+
+Regex is retained only as an optional fallback/triage path. It is not the default extraction authority.
+
+## Optional OCR And Parser Stack
 
 The parser layer is deliberately separate from the LLM. It is responsible for page structure, coordinates, reading order, tables, and evidence artifacts.
 
@@ -72,9 +98,9 @@ This is the main handwriting OCR path. It is intended for cropped handwritten li
 
 This is used for full-page OCR support, patch OCR, and verification of difficult or ambiguous regions.
 
-### Why the hybrid matters
+### Why the optional hybrid matters
 
-TrOCR is better as a focused handwriting recognizer. GOT-OCR is better as a broader OCR/VLM verifier for messy page structure. `doc-reader` uses both so the pipeline can handle handwritten crops and page-level uncertainty without forcing one model to do every job.
+TrOCR is better as a focused handwriting recognizer. GOT-OCR is better as a broader OCR/VLM verifier for messy page structure. These are useful for comparison or difficult scanned PDFs, but they are disabled by default so the normal app stays LLM-oriented and efficient.
 
 ## Data Model
 
@@ -136,12 +162,17 @@ REDIS_DB=0
 HF_TOKEN=...
 HUGGING_FACE_HUB_TOKEN=...
 DOC_READER_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
+DOC_READER_LLM_EXTRACT_ALL_NOTES=1
+DOC_READER_ENABLE_MEDICAL_VALIDATION=1
+DOC_READER_VALIDATION_BACKEND=model
+DOC_READER_VALIDATION_MODEL_ID=google/medgemma-1.5-4b-it
+DOC_READER_VALIDATION_FALLBACK_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
 DOC_READER_TROCR_MODEL_ID=microsoft/trocr-large-handwritten
 DOC_READER_GOT_OCR_MODEL_ID=stepfun-ai/GOT-OCR-2.0-hf
-DOC_READER_ENABLE_HANDWRITING_OCR=1
-DOC_READER_ENABLE_GOT_VERIFICATION=1
-DOC_READER_ENABLE_ADVANCED_PARSERS=1
-DOC_READER_PARSER_BACKENDS=docling,surya,paddle_structure
+DOC_READER_ENABLE_HANDWRITING_OCR=0
+DOC_READER_ENABLE_GOT_VERIFICATION=0
+DOC_READER_ENABLE_ADVANCED_PARSERS=0
+DOC_READER_PARSER_BACKENDS=
 DOC_READER_USE_4BIT=1
 DOC_READER_QUEUE_MODE=rq
 DOC_READER_DOC_WORKERS=4
@@ -181,7 +212,7 @@ npm run dev
 
 ```bash
 cd evolet
-docker compose --profile gpu up -d --build
+docker compose up -d --build
 ```
 
 Default services:
@@ -199,15 +230,15 @@ The last known deployed VM target is:
 - frontend: `http://34.126.112.227:3000`
 - backend: `http://34.126.112.227:9000/api/v1/dashboard/`
 
-The VM has an L4 GPU and is the right target for the TrOCR/GOT-OCR workload.
+The VM has an L4 GPU and is the right target for LLM extraction/validation and optional TrOCR/GOT-OCR comparison work.
 
 ### Live runner
 
 The frontend now has a live run monitor:
 
 - runs list: `http://34.126.112.227:3000/runs`
-- latest validation run: `http://34.126.112.227:3000/runs/f5429551-e07c-4745-93cf-319f8a9acf45`
-- YOLO validation run: `http://34.126.112.227:3000/runs/62ba872e-de75-411c-bc2e-2c4abeb952dd`
+- LLM-first validation run: `http://34.126.112.227:3000/runs/bb7238df-ef15-4dfc-a824-157f57714eb4`
+- YOLO comparison run: `http://34.126.112.227:3000/runs/62ba872e-de75-411c-bc2e-2c4abeb952dd`
 - run detail API: `http://34.126.112.227:9000/api/v1/runs/f5429551-e07c-4745-93cf-319f8a9acf45/`
 
 The run detail page polls the API and shows:
@@ -219,13 +250,15 @@ The run detail page polls the API and shows:
 
 The patient list is result-focused by default. It filters to patients with completed `FinalRecord` rows, so an imported folder with many PDFs does not appear as extracted output until those documents have actually been processed.
 
-Patient detail now includes a `Compare` tab. It embeds the source PDF through:
+Patient detail now includes a persistent left-side PDF preview under Source Records, plus a `Compare` tab. Both embed the source PDF through:
 
 ```text
 /api/v1/documents/<document_id>/pdf/
 ```
 
 The PDF is streamed inline by Django and proxied through the Next.js app, so extracted fields, evidence quotes, validation flags, and the original source file can be reviewed side by side.
+
+The frontend visual style was also changed from the older dark slate theme to a bright sparkling white/sky-blue glass theme.
 
 ### Chemotherapy dataset validation
 
@@ -284,6 +317,25 @@ Additional detection/validation run:
 
 This run uses the optional `yolo_layout` parser backend with `Armaggheddon/yolo11-document-layout` and `yolo11n_doc_layout.pt` for DocLayNet-style page-region detection. It also writes a validation payload into `FinalRecord.stats.validation` and `FinalRecord.grouped_record.validation`. The default validation backend is heuristic for reliability; set `DOC_READER_VALIDATION_BACKEND=model` to attempt the configured MedGemma/Gemma validation model (`DOC_READER_VALIDATION_MODEL_ID`, default `google/medgemma-1.5-4b-it`) when model access and VRAM are available.
 
+LLM-first validation run:
+
+- run ID: `bb7238df-ef15-4dfc-a824-157f57714eb4`
+- name: `Chemotherapy 10 PDF LLM-first validation run 2026-05-18`
+- status: completed
+- processed PDFs: 10 / 10
+- final records shown: 10
+- mentions: 17
+- mention origin split: 17 LLM / 0 regex
+- schema: `3.0-adaptive`
+- validation fallback used: `Qwen/Qwen2.5-1.5B-Instruct`
+
+Follow-on 5-PDF run:
+
+- run ID: `6a59d9af-69e1-4d85-8306-2bf342b0a280`
+- name: `Next 5 PDF LLM-first side-by-side run 2026-05-18`
+- reached: extraction complete for 5 / 5 and LLM processing started
+- operational note: after launch, the VM stopped responding to SSH/HTTP at the application layer while ports stayed open, so it likely needs a full Stop/Start from Google Cloud Console before the final status can be verified.
+
 ## Verified Status
 
 The advanced reader work added:
@@ -302,6 +354,8 @@ The advanced reader work added:
 
 Known remaining hardening work:
 
+- add a hard concurrency/VRAM cap before launching more multi-PDF LLM validation batches
+- recover the VM with a full Stop/Start if it returns to the stuck SSH-banner state
 - switch backend serving from Django runserver to Gunicorn
 - install and benchmark optional `requirements-advanced.txt` parser packages on the GPU VM
 - add artifact crop previews and page overlays in the frontend

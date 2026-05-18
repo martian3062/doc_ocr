@@ -10,7 +10,8 @@ This directory contains the live Django + Next.js application for `doc-reader`.
 - Redis queue path: RQ when available
 - database: SQLite locally or Postgres in Docker/VM
 - default extraction: native PDF text grouped into clinical notes, then extracted by the LLM
-- validation: MedGemma/Gemma-style validation LLM after the merged patient record is built
+- validation: MedGemma first, then Qwen validation fallback when strict JSON/model access fails
+- adaptive schema: `3.0-adaptive`, driven by the categories found in the current PDFs
 - optional advanced OCR/parser ensemble: TrOCR, GOT-OCR, Docling, Surya, PaddleOCR/PP-Structure, and YOLO adapters
 
 ## Main Backend Files
@@ -37,6 +38,8 @@ This directory contains the live Django + Next.js application for `doc-reader`.
 - `frontend/src/components/KnowledgeGraph.tsx`
 - `frontend/src/lib/api.ts`
 
+The patient detail screen now has a persistent PDF preview under Source Records. It uses each document's `pdf_url` and keeps the extracted record on the right for side-by-side checking. The frontend theme is now a bright sparkling white/sky-blue glass style instead of the older dark slate look.
+
 ## Local Backend
 
 ```bash
@@ -56,7 +59,7 @@ npm run dev
 ## Docker
 
 ```bash
-docker compose --profile gpu up -d --build
+docker compose up -d --build
 ```
 
 Services:
@@ -92,3 +95,13 @@ DOC_READER_DOC_WORKERS=4
 The older `EVOLET_*` environment names are still accepted as fallbacks, but new setup should use `DOC_READER_*`.
 
 The default install is intentionally LLM-oriented and avoids heavy Python OCR/layout packages. Optional advanced parser packages live in `requirements-advanced.txt`. Install that file and enable the matching env switches only for a CV/OCR comparison run.
+
+## Latest Validated Work
+
+- Repo published to `https://github.com/martian3062/doc_ocr.git`
+- Commit `de7737e`: initial current project push
+- Commit `4e33fd1`: bright frontend theme and patient PDF viewer
+- Latest completed LLM-first run: `bb7238df-ef15-4dfc-a824-157f57714eb4`
+- Completed run result: 10 / 10 PDFs, 17 mentions, 17 LLM / 0 regex, schema `3.0-adaptive`
+- Follow-on 5-PDF run started: `6a59d9af-69e1-4d85-8306-2bf342b0a280`
+- Operational note: the VM later stopped responding at the application layer while TCP ports stayed open. Use a full Google Cloud VM Stop/Start before more live checks, then restart the compose stack and cap LLM concurrency before launching more batches.
