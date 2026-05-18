@@ -1,5 +1,5 @@
 # ============================================================
-# Evolet — Medical Report OCR Pipeline
+# doc-reader — Medical Document Reader
 # Dependencies
 # ============================================================
 
@@ -8,13 +8,20 @@ Django>=5.1,<6.0
 django-jinja>=2.11
 whitenoise>=6.7
 django-cors-headers>=4.4  # Allowed CORS for Next.js
+dj-database-url>=2.2
+django-rq>=2.10
+django-storages>=1.14
+redis>=5.0
+psycopg[binary]>=3.2
+boto3>=1.35
 
 # ── PDF & OCR ────────────────────────────────────────────────
-pymupdf>=1.24               # PDF text extraction
-pillow>=10.4                # Image processing
-python-doctr[torch]>=1.0    # OCR engine (whole-page scanned PDFs)
-easyocr>=1.7                # Embedded image OCR (images inside text PDFs)
-opencv-python-headless>=4.10 # Image processing utilities
+pymupdf>=1.24               # Native PDF text extraction
+pillow>=10.4                # Lightweight PDF/image utility used lazily
+
+# Heavy OCR/layout engines are intentionally not in the default install.
+# Keep DocTR/EasyOCR/Docling/YOLO in requirements-advanced.txt and enable them
+# only with DOC_READER_ENABLE_ADVANCED_PARSERS=1 or OCR-specific env switches.
 
 # ── LLM / GPU Inference ─────────────────────────────────────
 # torch is installed separately in Dockerfile from CUDA wheel index
@@ -23,6 +30,8 @@ accelerate>=0.34            # Multi-GPU support
 bitsandbytes>=0.43          # 4-bit quantization
 safetensors>=0.4            # Safe model serialization
 huggingface_hub>=0.25       # Model download utilities
+sentencepiece>=0.2
+protobuf>=5.28
 
 # ── Data & Utilities ────────────────────────────────────────
 pandas>=2.2                 # Data manipulation
@@ -33,6 +42,7 @@ python-dateutil>=2.9        # Date parsing
 pydantic>=2.9               # Data validation
 json-repair>=0.30           # Fix malformed JSON from LLM
 tqdm>=4.66                  # Progress bars
+rq>=1.16                    # Queue workers
 
 # ── Text correction (new) ────────────────────────────────────────────────────
 symspellpy>=6.7             # Fast spell correction (symmetric-delete algorithm)

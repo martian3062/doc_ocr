@@ -1,1 +1,0 @@
-# Evolet Django project

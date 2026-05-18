@@ -1,23 +1,69 @@
 x-common: &common
   restart: unless-stopped
   volumes:
-    - evolet_media:/app/media
-    - evolet_db:/app/data
+    - doc_reader_media:/app/media
     - hf_cache:/root/.cache/huggingface
+    - ${DOC_READER_HOST_DATA_DIR:-/home/pardeep/data}:/data:ro
   environment:
-    DJANGO_SETTINGS_MODULE: evolet.settings
-    EVOLET_DB_PATH: /app/data/db.sqlite3
-    EVOLET_DOC_WORKERS: "4"
-    EVOLET_USE_4BIT: "1"
+    DJANGO_SETTINGS_MODULE: doc_reader.settings
+    DATABASE_URL: ${DATABASE_URL:-postgresql://doc_reader:doc_reader@postgres:5432/doc_reader}
+    REDIS_HOST: ${REDIS_HOST:-redis}
+    REDIS_PORT: ${REDIS_PORT:-6379}
+    REDIS_DB: ${REDIS_DB:-0}
+    HF_TOKEN: ${HF_TOKEN:-}
+    HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}
+    DOC_READER_DOC_WORKERS: ${DOC_READER_DOC_WORKERS:-4}
+    DOC_READER_USE_4BIT: ${DOC_READER_USE_4BIT:-1}
+    DOC_READER_QUEUE_MODE: "rq"
+    DOC_READER_USE_DOCTR_OCR: ${DOC_READER_USE_DOCTR_OCR:-0}
+    DOC_READER_USE_EMBEDDED_IMAGE_OCR: ${DOC_READER_USE_EMBEDDED_IMAGE_OCR:-0}
+    DOC_READER_ENABLE_HANDWRITING_OCR: ${DOC_READER_ENABLE_HANDWRITING_OCR:-0}
+    DOC_READER_ENABLE_GOT_VERIFICATION: ${DOC_READER_ENABLE_GOT_VERIFICATION:-0}
+    DOC_READER_ENABLE_ADVANCED_PARSERS: ${DOC_READER_ENABLE_ADVANCED_PARSERS:-0}
+    DOC_READER_PARSER_BACKENDS: ${DOC_READER_PARSER_BACKENDS:-}
+    DOC_READER_LLM_EXTRACT_ALL_NOTES: ${DOC_READER_LLM_EXTRACT_ALL_NOTES:-1}
+    DOC_READER_MAX_NOTES_PER_PATIENT_FOR_LLM: ${DOC_READER_MAX_NOTES_PER_PATIENT_FOR_LLM:-48}
+    DOC_READER_HANDWRITING_MAX_CROPS_PER_DOCUMENT: ${DOC_READER_HANDWRITING_MAX_CROPS_PER_DOCUMENT:-24}
+    DOC_READER_TROCR_MODEL_ID: ${DOC_READER_TROCR_MODEL_ID:-microsoft/trocr-large-handwritten}
+    DOC_READER_GOT_OCR_MODEL_ID: ${DOC_READER_GOT_OCR_MODEL_ID:-stepfun-ai/GOT-OCR-2.0-hf}
+    DOC_READER_YOLO_LAYOUT_MODEL_ID: ${DOC_READER_YOLO_LAYOUT_MODEL_ID:-Armaggheddon/yolo11-document-layout}
+    DOC_READER_YOLO_LAYOUT_MODEL_FILE: ${DOC_READER_YOLO_LAYOUT_MODEL_FILE:-yolo11n_doc_layout.pt}
+    DOC_READER_ENABLE_MEDICAL_VALIDATION: ${DOC_READER_ENABLE_MEDICAL_VALIDATION:-1}
+    DOC_READER_VALIDATION_BACKEND: ${DOC_READER_VALIDATION_BACKEND:-model}
+    DOC_READER_VALIDATION_MODEL_ID: ${DOC_READER_VALIDATION_MODEL_ID:-google/medgemma-1.5-4b-it}
+    DOC_READER_VALIDATION_FALLBACK_MODEL_ID: ${DOC_READER_VALIDATION_FALLBACK_MODEL_ID:-Qwen/Qwen2.5-1.5B-Instruct}
 
 services:
-  # ── Backend: Django REST API ───────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    container_name: doc_reader_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: doc_reader
+      POSTGRES_USER: doc_reader
+      POSTGRES_PASSWORD: doc_reader
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: doc_reader_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
   backend:
     <<: *common
     build: .
-    container_name: evolet_backend
+    image: doc-reader-backend
+    container_name: doc_reader_backend
     ports:
       - "9000:9000"
+    depends_on:
+      - postgres
+      - redis
     deploy:
       resources:
         reservations:
@@ -25,23 +71,42 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    profiles: ["gpu"]
 
-  # ── Frontend: Next.js + GSAP + Three.js ────────────────────────────────────
+  worker:
+    <<: *common
+    build: .
+    image: doc-reader-worker
+    container_name: doc_reader_worker
+    command: python manage.py rqworker --worker-class rq.SimpleWorker default
+    depends_on:
+      - backend
+      - redis
+      - postgres
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   frontend:
     build:
       context: ./frontend
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
         - BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL:-http://backend:9000}
-    container_name: evolet_frontend
+    image: doc-reader-frontend
+    container_name: doc_reader_frontend
     ports:
       - "3000:3000"
     restart: unless-stopped
     environment:
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:9000}
+    depends_on:
+      - backend
 
 volumes:
-  evolet_media:
-  evolet_db:
+  doc_reader_media:
   hf_cache:
+  postgres_data:

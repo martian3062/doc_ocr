@@ -62,7 +62,7 @@ _BUCKET_INDEX = {b: i for i, b in enumerate(_BUCKET_ORDER)}
 # Model management
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_model(model_id: str = None, force_reload: bool = False):
+def load_model(model_id: str = None, force_reload: bool = False, use_4bit: Optional[bool] = None):
     """
     Load the LLM and tokenizer, returning (tokenizer, model).
 
@@ -90,15 +90,11 @@ def load_model(model_id: str = None, force_reload: bool = False):
 
     unload_model()   # Free any previously loaded model first
 
-    from transformers import (
-        AutoTokenizer,
-        AutoModelForCausalLM,
-        BitsAndBytesConfig,
-        GenerationConfig,
-    )
+    from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 
     compute_dtype = detect_compute_dtype()
-    logger.info("Loading model: %s | dtype=%s | 4bit=%s", model_id, compute_dtype, config.USE_4BIT)
+    use_4bit = config.USE_4BIT if use_4bit is None else bool(use_4bit)
+    logger.info("Loading model: %s | dtype=%s | 4bit=%s", model_id, compute_dtype, use_4bit)
 
     # Common kwargs forwarded to both tokenizer and model
     common_kwargs: Dict[str, Any] = {"local_files_only": config.LOCAL_FILES_ONLY}
@@ -114,7 +110,9 @@ def load_model(model_id: str = None, force_reload: bool = False):
 
     # Quantisation config (skip if no GPU or 4-bit disabled)
     quant_config = None
-    if config.USE_4BIT and torch.cuda.is_available():
+    if use_4bit and torch.cuda.is_available():
+        from transformers import BitsAndBytesConfig
+
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=compute_dtype,

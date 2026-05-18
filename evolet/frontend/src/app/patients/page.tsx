@@ -2,18 +2,15 @@
 
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Users, 
+import {
   Search, 
-  Filter, 
   MoreVertical, 
   ChevronRight, 
   FileText, 
   Activity,
-  UserPlus
 } from "lucide-react";
 import { getPatientList } from "@/lib/api";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 export default function PatientListPage() {
   const [patients, setPatients] = useState<any[]>([]);
@@ -23,7 +20,7 @@ export default function PatientListPage() {
 
   const fetchPatients = (q = "") => {
     setLoading(true);
-    getPatientList({ q }).then(res => {
+    getPatientList({ q, has_results: "1" }).then(res => {
       setPatients(res.data.patients || []);
       setLoading(false);
       setError(null);
@@ -47,13 +44,9 @@ export default function PatientListPage() {
     <div className="p-8 space-y-8 min-h-screen">
       <header className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold font-outfit text-white">Patient Registry</h1>
-          <p className="text-slate-400">Manage and explore extracted clinical histories.</p>
+          <h1 className="text-3xl font-bold font-outfit text-white">Extracted Results</h1>
+          <p className="text-slate-400">Only patients with completed pipeline records are shown here.</p>
         </div>
-        <button className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-indigo-600/20 active:scale-95">
-          <UserPlus size={18} />
-          Register Patient
-        </button>
       </header>
 
       <div className="flex gap-4">
@@ -67,10 +60,6 @@ export default function PatientListPage() {
             className="w-full pl-12 pr-4 py-3 bg-[#11111d] border border-slate-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-slate-200 placeholder:text-slate-600"
           />
         </form>
-        <button className="px-5 py-3 bg-[#11111d] border border-slate-800 rounded-2xl text-slate-400 hover:text-white transition-colors flex items-center gap-2">
-          <Filter size={18} />
-          Filters
-        </button>
       </div>
       {error && !loading && (
         <div className="p-8 rounded-[2rem] bg-red-500/5 border border-red-500/20 text-center space-y-4">

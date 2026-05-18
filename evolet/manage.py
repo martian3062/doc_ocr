@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""Django management script for Evolet TMH OCR project."""
+"""Django management script for the doc-reader project."""
 import os
 import sys
 
 def main():
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "evolet.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "doc_reader.settings")
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

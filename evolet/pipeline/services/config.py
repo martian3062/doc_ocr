@@ -1,5 +1,5 @@
 """
-Evolet Pipeline — Runtime Configuration
+doc-reader Pipeline — Runtime Configuration
 =========================================
 Single source of truth for all tuneable knobs.
 Every constant can be overridden via an environment variable so that
@@ -21,6 +21,13 @@ Layout
 import os
 import re
 
+
+def env(name: str, default: str) -> str:
+    """Read DOC_READER_* first, then legacy EVOLET_* for old deployments."""
+    if name.startswith("EVOLET_"):
+        return os.environ.get(f"DOC_READER_{name.removeprefix('EVOLET_')}", os.environ.get(name, default))
+    return os.environ.get(name, default)
+
 # ── GPU probe (safe import) ──────────────────────────────────────────────────
 # We probe for CUDA here once so every downstream module can import GPU_AVAILABLE
 # directly from config rather than re-importing torch just to check.
@@ -37,16 +44,16 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Primary LLM — Qwen 2.5 1.5B Instruct (small, fast, good at JSON output)
-MODEL_ID = os.environ.get("EVOLET_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
+MODEL_ID = env("EVOLET_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
 
 # Fallback if primary model download fails
 FALLBACK_MODEL_ID = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
 
 # 4-bit NF4 quantisation via bitsandbytes — halves GPU memory at minimal quality cost
-USE_4BIT = os.environ.get("EVOLET_USE_4BIT", "1").strip() == "1"
+USE_4BIT = env("EVOLET_USE_4BIT", "1").strip() == "1"
 
 # Set to "1" when model weights are already cached locally (air-gapped envs)
-LOCAL_FILES_ONLY = os.environ.get("EVOLET_LOCAL_ONLY", "0").strip() == "1"
+LOCAL_FILES_ONLY = env("EVOLET_LOCAL_ONLY", "0").strip() == "1"
 
 # HuggingFace token — checked across three common env-var names
 HF_TOKEN = (
@@ -54,14 +61,17 @@ HF_TOKEN = (
     or os.environ.get("HUGGING_FACE_HUB_TOKEN")
     or os.environ.get("HUGGINGFACEHUB_API_TOKEN")
 )
+if HF_TOKEN:
+    os.environ.setdefault("HF_TOKEN", HF_TOKEN)
+    os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", HF_TOKEN)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. OCR (DocTR)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Master switch — disable to use native PDF text only (no GPU OCR)
-USE_DOCTR_OCR = True
+# Master switch. Default is LLM-oriented native text extraction only.
+USE_DOCTR_OCR = env("EVOLET_USE_DOCTR_OCR", "0").strip() == "1"
 
 # Page render resolution for OCR images; 130 DPI is fast and accurate enough
 OCR_RENDER_DPI = 130
@@ -83,11 +93,38 @@ NATIVE_TEXT_MIN_ALPHA_RATIO = 0.28
 # images) are extracted and run through EasyOCR separately from the DocTR
 # whole-page OCR path.  Catches clinical data that lives inside images embedded
 # in otherwise-text PDFs — a gap DocTR doesn't cover.
-USE_EMBEDDED_IMAGE_OCR = True
+USE_EMBEDDED_IMAGE_OCR = env("EVOLET_USE_EMBEDDED_IMAGE_OCR", "0").strip() == "1"
 
 # Minimum pixel area (width × height) for an embedded image to be worth OCR-ing.
 # Skips small decorative images, logos, and icons.
 EMBEDDED_IMAGE_MIN_PIXELS = 40_000   # ~200×200 px
+
+# Hybrid advanced OCR backends
+ENABLE_HANDWRITING_OCR = env("EVOLET_ENABLE_HANDWRITING_OCR", "0").strip() == "1"
+ENABLE_GOT_VERIFICATION = env("EVOLET_ENABLE_GOT_VERIFICATION", "0").strip() == "1"
+DOC_READER_ENABLE_ADVANCED_PARSERS = env("EVOLET_ENABLE_ADVANCED_PARSERS", "0").strip() == "1"
+DOC_READER_PARSER_BACKENDS = env("EVOLET_PARSER_BACKENDS", "")
+TROCR_MODEL_ID = env("EVOLET_TROCR_MODEL_ID", "microsoft/trocr-large-handwritten")
+GOT_OCR_MODEL_ID = env("EVOLET_GOT_OCR_MODEL_ID", "stepfun-ai/GOT-OCR-2.0-hf")
+YOLO_LAYOUT_MODEL_ID = env("EVOLET_YOLO_LAYOUT_MODEL_ID", "Armaggheddon/yolo11-document-layout")
+YOLO_LAYOUT_MODEL_FILE = env("EVOLET_YOLO_LAYOUT_MODEL_FILE", "yolo11n_doc_layout.pt")
+YOLO_LAYOUT_DPI = int(env("EVOLET_YOLO_LAYOUT_DPI", "144"))
+YOLO_LAYOUT_CONFIDENCE = float(env("EVOLET_YOLO_LAYOUT_CONFIDENCE", "0.25"))
+TROCR_MAX_NEW_TOKENS = int(env("EVOLET_TROCR_MAX_NEW_TOKENS", "128"))
+GOT_OCR_MAX_NEW_TOKENS = int(env("EVOLET_GOT_OCR_MAX_NEW_TOKENS", "1024"))
+HANDWRITING_MIN_NATIVE_CHARS = int(env("EVOLET_HANDWRITING_MIN_NATIVE_CHARS", "48"))
+LAYOUT_NOTE_VERTICAL_GAP = float(env("EVOLET_LAYOUT_NOTE_VERTICAL_GAP", "42"))
+HANDWRITING_MAX_CROPS_PER_DOCUMENT = int(env("EVOLET_HANDWRITING_MAX_CROPS_PER_DOCUMENT", "24"))
+
+# LLM-first extraction and validation. The default path sends every meaningful
+# grouped note to the extraction LLM, then audits the merged patient record with
+# a validation LLM. Both stages degrade gracefully if model access is missing.
+LLM_EXTRACT_ALL_NOTES = env("EVOLET_LLM_EXTRACT_ALL_NOTES", "1").strip() == "1"
+ENABLE_MEDICAL_VALIDATION = env("EVOLET_ENABLE_MEDICAL_VALIDATION", "1").strip() == "1"
+VALIDATION_BACKEND = env("EVOLET_VALIDATION_BACKEND", "model")
+VALIDATION_MODEL_ID = env("EVOLET_VALIDATION_MODEL_ID", "google/medgemma-1.5-4b-it")
+VALIDATION_FALLBACK_MODEL_ID = env("EVOLET_VALIDATION_FALLBACK_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
+VALIDATION_MAX_NEW_TOKENS = int(env("EVOLET_VALIDATION_MAX_NEW_TOKENS", "384"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,16 +144,16 @@ DEDUP_EXACT_NOTES = True
 
 # Safety cap: never send more than this many notes to the LLM per patient
 # (prevents runaway GPU time on very long PDFs)
-MAX_NOTES_PER_PATIENT_FOR_LLM = 16
+MAX_NOTES_PER_PATIENT_FOR_LLM = int(env("EVOLET_MAX_NOTES_PER_PATIENT_FOR_LLM", "48"))
 
 # A note needs at least this clinical signal score to be worth sending to the LLM
-MIN_SIGNAL_FOR_LLM = 3
+MIN_SIGNAL_FOR_LLM = int(env("EVOLET_MIN_SIGNAL_FOR_LLM", "1"))
 
 # If regex already found this many mentions in a note, skip the LLM for that note
 MIN_REGEX_MENTIONS_TO_SKIP_LLM = 3
 
 # Short notes (< 40 words) rarely contain enough context for the LLM to add value
-SEND_SHORT_NOTES_TO_LLM = False
+SEND_SHORT_NOTES_TO_LLM = env("EVOLET_SEND_SHORT_NOTES_TO_LLM", "1").strip() == "1"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -162,16 +199,16 @@ DO_SAMPLE = False
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Maximum worker threads for I/O-bound stages (extraction, photo, etc.)
-MAX_WORKERS = int(os.environ.get("EVOLET_MAX_WORKERS", "4"))
+MAX_WORKERS = int(env("EVOLET_MAX_WORKERS", "4"))
 
 # Number of documents processed concurrently in Phase 1.
 # CPU phases (native extract, segmentation, regex) run in parallel;
 # GPU phases (DocTR, EasyOCR) are serialised by a lock inside pdf_extractor.py.
 # For single-GPU servers, keep at 4 — increasing beyond this adds thread overhead.
-DOC_WORKERS = int(os.environ.get("EVOLET_DOC_WORKERS", "4"))
+DOC_WORKERS = int(env("EVOLET_DOC_WORKERS", "4"))
 
 # Skip re-processing PDFs that already have PageLedger rows in the database
-SKIP_EXISTING = True
+SKIP_EXISTING = env("EVOLET_SKIP_EXISTING", "1").strip() == "1"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +272,9 @@ _DATE_RE        = [re.compile(p, re.I) for p in DATE_PATTERNS]
 # swapped without touching the engine code.
 
 SYSTEM_PROMPT = """
-You extract structured clinical mentions from one medical note.
+You extract structured mentions from one PDF note. The PDF may be any medical,
+administrative, billing, consent, discharge, lab, prescription, or mixed
+hospital document type.
 
 Return exactly one JSON object with this shape:
 {
@@ -258,9 +297,11 @@ Rules:
 - Max 8 mentions.
 - Do not invent facts.
 - evidence_quote must be a short verbatim snippet from the note.
-- If no clinically useful mention exists, return {"mentions":[]}.
-- Allowed categories:
-  diagnosis, medication, plan, symptom, imaging, pathology, genomics,
-  procedure, lab, status, follow_up, surgery, radiotherapy,
-  performance_status, other
+- If no useful mention exists, return {"mentions":[]}.
+- Use concise snake_case categories that match the document content.
+- Prefer familiar medical categories when they fit, for example diagnosis,
+  medication, procedure, lab, imaging, pathology, follow_up, billing,
+  demographics, identifier, admission, discharge, consent, appointment,
+  insurance, contact, vital_sign, instruction, note, or other.
+- Do not force a mention into an oncology category if the PDF is not oncology.
 """.strip()

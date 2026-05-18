@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Evolet{% endblock %} — TMH OCR Pipeline</title>
-    <meta name="description" content="Evolet TMH Patient PDF Extraction Pipeline — Clinical data extraction with lossless-first + LLM rescue approach.">
+    <title>{% block title %}doc-reader{% endblock %} — Clinical Document Reader</title>
+    <meta name="description" content="doc-reader clinical document pipeline with handwriting OCR, evidence-native extraction, and patient-level relation views.">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -270,7 +270,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
                 </div>
-                <span class="text-base font-bold gradient-text-bold brand-font hidden sm:block">Evolet</span>
+                <span class="text-base font-bold gradient-text-bold brand-font hidden sm:block">doc-reader</span>
             </a>
 
             <!-- Nav links -->
@@ -365,7 +365,7 @@
     <!-- ── Footer ── -->
     <footer class="mt-16 border-t border-slate-200/70 dark:border-white/5 py-5">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-3">
-            <p class="text-xs text-slate-400 dark:text-slate-500">Evolet Pipeline — 4basecare TMH OCR</p>
+            <p class="text-xs text-slate-400 dark:text-slate-500">doc-reader pipeline — advanced clinical document reader</p>
             <div class="flex items-center gap-4">
                 <p class="text-xs text-slate-400 dark:text-slate-500">Qwen 2.5 · Lossless-first + LLM rescue</p>
                 <kbd class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-white/8 font-mono">

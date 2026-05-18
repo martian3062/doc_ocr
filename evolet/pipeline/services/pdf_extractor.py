@@ -29,9 +29,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import fitz          # PyMuPDF
-import numpy as np
-import torch
-from PIL import Image
 
 from . import config
 from .text_cleaner import clean_text_block
@@ -130,6 +127,8 @@ def _init_ocr() -> Optional[Any]:
             return _ocr_engine
         try:
             from doctr.models import ocr_predictor
+            import torch
+
             engine = ocr_predictor(pretrained=True, assume_straight_pages=True)
 
             if torch.cuda.is_available():
@@ -223,6 +222,8 @@ def _init_easy_ocr() -> Optional[Any]:
             return _easy_ocr_reader
         try:
             import easyocr
+            import torch
+
             use_gpu = torch.cuda.is_available()
             _easy_ocr_reader = easyocr.Reader(["en"], gpu=use_gpu, verbose=False)
             logger.info("EasyOCR reader loaded (%s)", "GPU" if use_gpu else "CPU")
@@ -270,6 +271,9 @@ def _extract_embedded_image_text(fitz_doc, page_idx: int) -> str:
     for img_info in image_list:
         xref = img_info[0]
         try:
+            import numpy as np
+            from PIL import Image
+
             base_image = fitz_doc.extract_image(xref)
             img_bytes  = base_image["image"]
             img_pil    = Image.open(io.BytesIO(img_bytes)).convert("RGB")

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -e
-LOG=~/evolet/setup.log
+APP_DIR=${APP_DIR:-~/doc-reader}
+LOG="$APP_DIR/setup.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo ""
 echo "============================================"
-echo "  Evolet VM Setup  $(date)"
+echo "  doc-reader VM Setup  $(date)"
 echo "  Python 3.10 + CUDA 12.4 + L4 GPU"
 echo "============================================"
 
-cd ~/evolet
+cd "$APP_DIR"
 
 # Use pyenv Python 3.10 for ML lib compatibility
 PY=~/.pyenv/versions/3.10.20/bin/python3
@@ -44,11 +45,13 @@ echo "--- Collecting static files..."
 python manage.py collectstatic --noinput 2>/dev/null || true
 
 echo ""
-echo "--- Importing TMH patient reports..."
-if [ -d ~/data/TMH_Patient_Reports ]; then
+echo "--- Importing sample patient reports if available..."
+if [ -d ~/data/doc-reader-documents ]; then
+    python manage.py import_folder ~/data/doc-reader-documents && echo "Import done"
+elif [ -d ~/data/TMH_Patient_Reports ]; then
     python manage.py import_folder ~/data/TMH_Patient_Reports && echo "Import done"
 else
-    echo "Skipping: ~/data/TMH_Patient_Reports not found"
+    echo "Skipping: no document folder found"
 fi
 
 echo ""
@@ -57,8 +60,8 @@ echo "  Setup complete!  $(date)"
 echo "  Starting server on 0.0.0.0:9000..."
 echo "============================================"
 
-nohup python manage.py runserver 0.0.0.0:9000 >> ~/evolet/server.log 2>&1 &
-echo $! > ~/evolet/server.pid
-echo "Server PID: $(cat ~/evolet/server.pid)"
-echo "Tail server logs:  tail -f ~/evolet/server.log"
-echo "Setup log:         ~/evolet/setup.log"
+nohup python manage.py runserver 0.0.0.0:9000 >> "$APP_DIR/server.log" 2>&1 &
+echo $! > "$APP_DIR/server.pid"
+echo "Server PID: $(cat "$APP_DIR/server.pid")"
+echo "Tail server logs:  tail -f $APP_DIR/server.log"
+echo "Setup log:         $APP_DIR/setup.log"

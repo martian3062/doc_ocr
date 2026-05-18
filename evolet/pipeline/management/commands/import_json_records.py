@@ -3,7 +3,7 @@ Management command to import final JSON records from the notebook pipeline.
 
 Usage:
     python manage.py import_json_records /path/to/json/folder
-    python manage.py import_json_records   # uses default EVOLET_DATA_DIR
+    python manage.py import_json_records   # uses default DOC_READER_DATA_DIR
 """
 import json
 from pathlib import Path
@@ -19,7 +19,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "folder",
             nargs="?",
-            default=str(settings.EVOLET_DATA_DIR),
+            default=str(settings.DOC_READER_DATA_DIR),
             help="Path to folder containing *_final.json files",
         )
 

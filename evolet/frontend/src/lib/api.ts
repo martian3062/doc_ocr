@@ -19,8 +19,8 @@ const api = axios.create({
 });
 
 export const getDashboardData = () => api.get('/dashboard/');
-export const getDocumentList = (params?: { q?: string }) => api.get('/documents/', { params });
-export const getPatientList = (params?: { q?: string }) => api.get('/patients/', { params });
+export const getDocumentList = (params?: { q?: string; run?: string }) => api.get('/documents/', { params });
+export const getPatientList = (params?: { q?: string; run?: string; has_results?: string }) => api.get('/patients/', { params });
 export const getPatientDetail = (id: string | number) => api.get(`/patients/${id}/`);
 export const getKnowledgeMap = (id: string | number) => api.get(`/patients/${id}/knowledge-map/`);
 export const getRunHistory = () => api.get('/runs/');

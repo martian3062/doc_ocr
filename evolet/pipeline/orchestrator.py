@@ -1,5 +1,5 @@
 """
-Evolet Pipeline Orchestrator
+doc-reader Pipeline Orchestrator
 =============================
 Coordinates the complete medical-report processing pipeline across six phases:
 
@@ -52,12 +52,11 @@ from django.utils import timezone
 
 from .models import (
     Patient, PDFDocument, PipelineRun, PageLedger, NoteLedger,
-    Mention, FinalRecord, ProcessingLog,
+    Mention, FinalRecord, ProcessingLog, DocumentArtifact, MentionRelation,
 )
 from .services import config
 from .services.pdf_extractor    import extract_pdf_pages, normalize_text, word_count
-from .services.note_segmenter   import segment_pages_to_notes, triage_notes
-from .services.regex_extractor  import extract_all_notes
+from .services.note_segmenter   import triage_notes
 from .services.llm_engine       import load_model, process_unresolved_notes, unload_model
 from .services.merger           import build_final_record
 from .services.text_corrector   import correct_all_mentions
@@ -65,6 +64,10 @@ from .services.schema_builder   import build_deep_schema
 from .services.qc               import compute_qc_metrics
 from .services.photo_extractor  import extract_profile_photo
 from .services.gpu_utils        import setup_gpu, release_cuda
+from .services.layout_segmenter import extract_document_artifacts, segment_layout_aware_notes
+from .services.regex_extractor  import extract_note_mentions
+from .services.relation_extractor import build_relation_payload
+from .services.validation import validate_final_record
 
 logger = logging.getLogger("pipeline")
 
@@ -184,13 +187,51 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
                 word_count      = row["word_count"],
                 alpha_ratio     = row["alpha_ratio"],
                 need_ocr        = row["need_ocr"],
+                page_width      = row.get("page_width", 0.0),
+                page_height     = row.get("page_height", 0.0),
+                layout_blocks   = row.get("layout_blocks", []),
             )
             for row in page_rows
         ])
 
+        artifacts = extract_document_artifacts(pdf_path, page_rows)
+        page_map = {
+            page.page_num: page
+            for page in PageLedger.objects.filter(document=doc)
+        }
+        DocumentArtifact.objects.filter(document=doc).delete()
+        artifact_objects = [
+            DocumentArtifact(
+                patient=patient,
+                document=doc,
+                page=page_map.get(item["page_num"]),
+                run=run,
+                artifact_type=item["artifact_type"],
+                role=item.get("role", ""),
+                backend=item.get("backend", ""),
+                text=item.get("text", ""),
+                normalized_text=item.get("normalized_text", ""),
+                confidence=item.get("confidence", 0.0),
+                bbox=item.get("bbox", []),
+                polygon=item.get("polygon", []),
+                page_num=item.get("page_num", 0),
+                reading_order=item.get("reading_order", 0),
+                metadata=item.get("metadata", {}),
+            )
+            for item in artifacts
+        ]
+        if artifact_objects:
+            DocumentArtifact.objects.bulk_create(artifact_objects)
+            artifacts = list(
+                DocumentArtifact.objects.filter(document=doc).order_by("page_num", "reading_order").values(
+                    "id", "artifact_type", "role", "backend", "text", "normalized_text",
+                    "confidence", "bbox", "polygon", "page_num", "reading_order", "metadata",
+                )
+            )
+
         # ── 1b: Note Segmentation ─────────────────────────────────────────
-        # Split each page into clinical-note-sized chunks; dedup by MD5.
-        notes = segment_pages_to_notes(page_rows)
+        # Split each page into clinical-note-sized chunks using layout-aware artifacts.
+        notes = segment_layout_aware_notes(page_rows, artifacts)
         result["note_count"] = len(notes)
 
         # ── 1c: Regex Extraction ──────────────────────────────────────────
@@ -198,17 +239,25 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
         # Parallelised with threads: regex is I/O-safe (pure Python) and each
         # note is fully independent, so ThreadPoolExecutor gives real overlap
         # on multi-core machines.
-        from .services.regex_extractor import extract_note_mentions
-        _workers = min(config.MAX_WORKERS, max(1, len(notes)))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=_workers) as _ex:
-            _results = list(_ex.map(extract_note_mentions, notes))
-        regex_results = {notes[i]["note_id"]: _results[i] for i in range(len(notes))}
-        result["regex_mentions"] = sum(len(v) for v in regex_results.values())
+        if config.LLM_EXTRACT_ALL_NOTES:
+            llm_notes = [
+                note for note in notes
+                if int(note.get("signal") or 0) >= config.MIN_SIGNAL_FOR_LLM
+                and (not note.get("low_value") or config.SEND_SHORT_NOTES_TO_LLM)
+            ][: config.MAX_NOTES_PER_PATIENT_FOR_LLM]
+            triaged = {"resolved": [], "unresolved": llm_notes}
+            result["regex_mentions"] = 0
+        else:
+            _workers = min(config.MAX_WORKERS, max(1, len(notes)))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=_workers) as _ex:
+                _results = list(_ex.map(extract_note_mentions, notes))
+            regex_results = {notes[i]["note_id"]: _results[i] for i in range(len(notes))}
+            result["regex_mentions"] = sum(len(v) for v in regex_results.values())
+            triaged = triage_notes(notes, regex_results)
 
         # ── 1d: Triage ────────────────────────────────────────────────────
         # Classify notes: resolved (regex enough) vs. unresolved (needs LLM).
-        triaged = triage_notes(notes, regex_results)
-        result["resolved"]   = len(triaged["resolved"])
+        result["resolved"] = len(triaged["resolved"])
         result["unresolved"] = len(triaged["unresolved"])
 
         # Build a set of note_ids that need LLM for O(1) lookup below
@@ -227,32 +276,42 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
                 signal_score = note["signal"],
                 is_low_value = note["low_value"],
                 needs_llm    = note["note_id"] in unresolved_ids,
-                is_resolved  = note["note_id"] not in unresolved_ids,
+                is_resolved  = False if config.LLM_EXTRACT_ALL_NOTES else note["note_id"] not in unresolved_ids,
+                layout_hint  = note.get("layout_hint", {}),
+                artifact_ids = note.get("artifact_ids", []),
             )
             for note in notes
         ])
+        note_map = {
+            note.note_id: note
+            for note in NoteLedger.objects.filter(document=doc)
+        }
 
         # Persist regex-extracted mentions (only from resolved notes)
         Mention.objects.filter(patient=patient, run=run, origin="regex").delete()
         regex_mention_objects = []
-        for resolved_note in triaged["resolved"]:
-            for m in resolved_note.get("mentions", []):
-                regex_mention_objects.append(Mention(
-                    patient          = patient,
-                    document         = doc,
-                    run              = run,
-                    category         = m["category"],
-                    label            = m["label"],
-                    value            = m["value"],
-                    normalized_value = m["normalized_value"],
-                    date_text        = m.get("date_text", ""),
-                    certainty        = m.get("certainty", "unknown"),
-                    attributes       = m.get("attributes", {}),
-                    evidence_quote   = m.get("evidence_quote", ""),
-                    source_pages     = m.get("source_pages", []),
-                    evidence_ids     = m.get("evidence_ids", []),
-                    origin           = "regex",
-                ))
+        if not config.LLM_EXTRACT_ALL_NOTES:
+            for resolved_note in triaged["resolved"]:
+                for m in resolved_note.get("mentions", []):
+                    note_obj = note_map.get(resolved_note["note_id"])
+                    regex_mention_objects.append(Mention(
+                        patient          = patient,
+                        document         = doc,
+                        run              = run,
+                        note             = note_obj,
+                        category         = m["category"],
+                        label            = m["label"],
+                        value            = m["value"],
+                        normalized_value = m["normalized_value"],
+                        date_text        = m.get("date_text", ""),
+                        certainty        = m.get("certainty", "unknown"),
+                        attributes       = m.get("attributes", {}),
+                        evidence_quote   = m.get("evidence_quote", ""),
+                        source_pages     = m.get("source_pages", []),
+                        evidence_ids     = m.get("evidence_ids", []),
+                        evidence_artifact_ids = list(note_obj.artifact_ids) if note_obj else [],
+                        origin           = "regex",
+                    ))
         if regex_mention_objects:
             Mention.objects.bulk_create(regex_mention_objects)
 
@@ -260,8 +319,8 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
         result["unresolved_notes_data"] = triaged["unresolved"]
 
         _log(run, "info", "extraction",
-             f"{patient.code}: {len(page_rows)} pages, {len(notes)} notes, "
-             f"{result['resolved']} resolved, {result['unresolved']} queued for LLM")
+             f"{patient.code}: {len(page_rows)} pages, {len(notes)} grouped notes, "
+             f"{result['unresolved']} queued for LLM-first extraction")
 
     except Exception as exc:
         result["status"] = "error"
@@ -312,7 +371,7 @@ def run_llm_phase(run: PipelineRun, doc_results: List[dict]) -> None:
 
     # Load model (singleton — already loaded if called twice)
     try:
-        load_model()
+        load_model(model_id=run.model_id, use_4bit=run.use_4bit)
     except Exception as exc:
         _log(run, "error", "llm", f"Model load failed: {exc}")
         return
@@ -324,6 +383,10 @@ def run_llm_phase(run: PipelineRun, doc_results: List[dict]) -> None:
         llm_mentions = process_unresolved_notes(
             all_unresolved, progress_callback=_progress
         )
+
+        def _short(value, max_length: int, default: str = "") -> str:
+            text = str(value or default).strip()
+            return text[:max_length]
 
         # Map LLM mentions back to their patient / document
         mention_objects = []
@@ -341,27 +404,31 @@ def run_llm_phase(run: PipelineRun, doc_results: List[dict]) -> None:
 
             # Use the first associated document (patients in this pipeline are 1:1 with PDFs)
             doc = patient.documents.first()
+            note_obj = NoteLedger.objects.filter(document=doc, note_id=note_id).first() if doc else None
 
             mention_objects.append(Mention(
                 patient          = patient,
                 document         = doc,
                 run              = run,
-                category         = m["category"],
-                label            = m["label"],
+                note             = note_obj,
+                category         = _short(m.get("category"), 50, "other"),
+                label            = _short(m.get("label"), 200, "LLM mention"),
                 value            = m["value"],
                 normalized_value = m["normalized_value"],
-                date_text        = m.get("date_text", ""),
-                certainty        = m.get("certainty", "unknown"),
+                date_text        = _short(m.get("date_text"), 100),
+                certainty        = _short(m.get("certainty"), 20, "unknown"),
                 attributes       = m.get("attributes", {}),
                 evidence_quote   = m.get("evidence_quote", ""),
                 source_pages     = m.get("source_pages", []),
                 evidence_ids     = m.get("evidence_ids", []),
+                evidence_artifact_ids = list(note_obj.artifact_ids) if note_obj else [],
                 origin           = "llm",
             ))
 
         if mention_objects:
             Mention.objects.bulk_create(mention_objects)
 
+        run.refresh_from_db(fields=["total_mentions"])
         _update_run(run, total_mentions=run.total_mentions + len(llm_mentions))
         _log(run, "info", "llm", f"LLM extracted {len(llm_mentions)} mentions")
 
@@ -398,7 +465,8 @@ def run_merge_phase(run: PipelineRun) -> None:
                 Mention.objects.filter(patient=patient, run=run).values(
                     "category", "label", "value", "normalized_value",
                     "date_text", "certainty", "attributes",
-                    "evidence_quote", "source_pages", "evidence_ids", "origin",
+                    "evidence_quote", "source_pages", "evidence_ids",
+                    "evidence_artifact_ids", "origin",
                 )
             )
             doc        = patient.documents.first()
@@ -424,6 +492,23 @@ def run_merge_phase(run: PipelineRun) -> None:
                 page_count     = final_data["page_count"],
                 note_count     = final_data["note_count"],
             )
+            relation_payload = build_relation_payload(corrected_mentions)
+            validation_payload = validate_final_record(
+                patient_code=patient.code,
+                source_pdf=doc.original_filename if doc else "",
+                mentions=corrected_mentions,
+                grouped_record=deep_schema,
+                stats=final_data["stats"],
+                review_flags=final_data["review_flags"],
+            )
+            merged_review_flags = sorted(
+                set(final_data["review_flags"] + validation_payload.get("flags", []))
+            )
+            merged_stats = {
+                **final_data["stats"],
+                "validation": validation_payload,
+            }
+            deep_schema["validation"] = validation_payload
             FinalRecord.objects.update_or_create(
                 patient  = patient,
                 defaults = {
@@ -433,11 +518,44 @@ def run_merge_phase(run: PipelineRun) -> None:
                     "mention_count":  final_data["stats"]["mentions_after_merge"],
                     "category_count": final_data["stats"]["categories_after_merge"],
                     "grouped_record": deep_schema,
-                    "review_flags":   final_data["review_flags"],
+                    "review_flags":   merged_review_flags,
                     "traceability":   final_data["traceability"],
-                    "stats":          final_data["stats"],
+                    "stats":          merged_stats,
+                    "relation_graph": {"edges": relation_payload["edges"]},
+                    "timeline_events": relation_payload["timeline_events"],
                 },
             )
+
+            MentionRelation.objects.filter(patient=patient, run=run).delete()
+            mention_index = {
+                "::".join([
+                    str(m.category).lower(),
+                    str(m.label).lower(),
+                    str(m.normalized_value or m.value).lower(),
+                    str(m.date_text).lower(),
+                ]): m
+                for m in Mention.objects.filter(patient=patient, run=run)
+            }
+            relation_objects = []
+            for edge in relation_payload["edges"]:
+                relation_objects.append(MentionRelation(
+                    patient=patient,
+                    run=run,
+                    source_mention=mention_index.get(edge["source_key"]),
+                    target_mention=mention_index.get(edge["target_key"]),
+                    relation_type=edge["relation_type"],
+                    confidence=edge.get("confidence", 0.0),
+                    evidence_artifact_ids=edge.get("source_artifact_ids", []) + edge.get("target_artifact_ids", []),
+                    evidence_pages=edge.get("evidence_pages", []),
+                    metadata={
+                        "source_label": edge.get("source_label", ""),
+                        "target_label": edge.get("target_label", ""),
+                        "source_value": edge.get("source_value", ""),
+                        "target_value": edge.get("target_value", ""),
+                    },
+                ))
+            if relation_objects:
+                MentionRelation.objects.bulk_create(relation_objects)
         except Exception as exc:
             _log(run, "error", "merge", f"Merge failed for {patient.code}: {exc}")
 
@@ -536,6 +654,7 @@ def run_full_pipeline(run: PipelineRun) -> None:
         status       = PipelineRun.Status.COMPLETED,
         completed_at = timezone.now(),
     )
+    run.refresh_from_db(fields=["total_mentions"])
     _log(run, "info", "complete",
          f"Pipeline complete: {len(documents)} PDFs processed, "
          f"{run.total_mentions} total mentions")

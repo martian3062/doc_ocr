@@ -9,12 +9,9 @@ import {
   Users, 
   Activity, 
   FileText, 
-  Share2, 
-  Settings, 
   ChevronLeft,
   ChevronRight,
   Database,
-  Cpu
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,9 +20,6 @@ const items = [
   { name: "Patients", href: "/patients", icon: Users },
   { name: "Runs", href: "/runs", icon: Activity },
   { name: "Documents", href: "/documents", icon: FileText },
-  { name: "Knowledge Map", href: "/map", icon: Share2 },
-  { name: "Infrastructure", href: "/infra", icon: Cpu },
-  { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -51,7 +45,7 @@ export function Sidebar() {
                 <Database className="w-5 h-5 text-white" />
               </div>
               <span className="text-xl font-bold font-outfit tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-                EVOLET
+                doc-reader
               </span>
             </motion.div>
           )}
@@ -103,11 +97,13 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-[#1e1e2d]">
         <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-900/50 border border-slate-800/50">
-          <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden shrink-0" />
+          <div className="w-10 h-10 rounded-full bg-cyan-500/10 border border-cyan-500/20 overflow-hidden shrink-0 flex items-center justify-center">
+            <Database size={18} className="text-cyan-300" />
+          </div>
           {!collapsed && (
             <div className="overflow-hidden">
-              <p className="text-sm font-semibold text-slate-100 truncate">Pardeep</p>
-              <p className="text-[11px] text-slate-500 truncate">System Admin</p>
+              <p className="text-sm font-semibold text-slate-100 truncate">L4 runtime</p>
+              <p className="text-[11px] text-slate-500 truncate">LLM-first validation</p>
             </div>
           )}
         </div>

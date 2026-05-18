@@ -6,9 +6,12 @@ import * as d3 from 'd3';
 interface Node extends d3.SimulationNodeDatum {
   id: string;
   label: string;
-  type: 'category' | 'mention';
+  type: 'category' | 'mention' | 'artifact';
   val: number;
   category?: string;
+  value?: string;
+  page_num?: number;
+  backend?: string;
   x?: number;
   y?: number;
 }
@@ -33,6 +36,11 @@ const CATEGORY_COLORS: Record<string, string> = {
   'treatment': '#34d399',
   'disease': '#fb7185',
   'marker': '#a78bfa',
+  'handwriting': '#22d3ee',
+  'body': '#38bdf8',
+  'table': '#f97316',
+  'stamp': '#ef4444',
+  'embedded_figure': '#10b981',
   'default': '#6366f1'
 };
 
@@ -111,10 +119,10 @@ export function KnowledgeGraph({ data }: KnowledgeGraphProps) {
 
     // Main Node Circle
     node.append("circle")
-      .attr("r", d => d.val)
+      .attr("r", d => d.type === "artifact" ? Math.max(4, d.val - 1) : d.val)
       .attr("fill", "#0a0a0f")
       .attr("stroke", d => CATEGORY_COLORS[d.category || (d.type === 'category' ? d.id.replace('cat_', '') : 'default')] || CATEGORY_COLORS.default)
-      .attr("stroke-width", 2.5)
+      .attr("stroke-width", d => d.type === "artifact" ? 1.5 : 2.5)
       .attr("class", "cursor-pointer transition-all duration-300 hover:stroke-white")
       .style("filter", "none");
 
@@ -123,6 +131,15 @@ export function KnowledgeGraph({ data }: KnowledgeGraphProps) {
       .append("circle")
       .attr("r", 3)
       .attr("fill", d => CATEGORY_COLORS[d.id.replace('cat_', '')] || CATEGORY_COLORS.default);
+
+    node.filter(d => d.type === "artifact")
+      .append("rect")
+      .attr("x", -4)
+      .attr("y", -4)
+      .attr("width", 8)
+      .attr("height", 8)
+      .attr("rx", 2)
+      .attr("fill", d => CATEGORY_COLORS[d.category || "default"] || CATEGORY_COLORS.default);
 
     // Labels
     const label = node.append("g")
@@ -141,7 +158,7 @@ export function KnowledgeGraph({ data }: KnowledgeGraphProps) {
         .style("backdrop-filter", "blur(8px)");
 
     label.append("text")
-      .text(d => d.label)
+      .text(d => d.type === "artifact" && d.page_num ? `${d.label} · p${d.page_num}` : d.label)
       .attr("x", 22)
       .attr("y", 4)
       .attr("fill", "#fff")

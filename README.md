@@ -1,557 +1,308 @@
-# TMH OCR — Evolet
+# doc-reader
 
-**Live:** http://34.31.236.150:9000
+`doc-reader` is an evidence-native clinical document reader for hospital PDFs, scanned reports, mixed-layout records, and difficult handwritten notes. It is built to turn source documents into traceable structured medical data, not just loose OCR text.
 
-<p align="left">
-  <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" />
-  <img src="https://img.shields.io/badge/Django-5.x-green?logo=django" />
-  <img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js" />
-  <img src="https://img.shields.io/badge/CUDA-12.4-76B900?logo=nvidia" />
-  <img src="https://img.shields.io/badge/Docker-GPU%20ready-2496ED?logo=docker" />
-  <img src="https://img.shields.io/badge/LLM-Qwen%202.5%201.5B-orange" />
-</p>
+The current default system is LLM-oriented: native PDF text is grouped into clinical notes, every useful note goes through the extraction LLM, and a MedGemma/Gemma-style validation LLM audits the merged patient record. Heavy OCR/layout engines such as TrOCR, GOT-OCR, Docling, Surya, PaddleOCR, and YOLO are optional comparison backends, not the default path.
 
-Evolet is a medical PDF intelligence system that extracts structured oncology data from scanned and digital hospital documents, stores the results in Django, and serves them through a modern Next.js frontend.
+## What It Does
 
-It combines:
+`doc-reader` reads clinical documents through a hybrid document-understanding pipeline:
 
-- OCR for scanned pages
-- native PDF text extraction for digital documents
-- regex-based entity extraction for speed and determinism
-- LLM-based extraction for deeper clinical understanding
-- a Django REST API and orchestration layer
-- a Next.js dashboard and patient explorer UI
+1. native PDF text extraction when the PDF already contains reliable text
+2. page and region artifact generation with coordinates and reading order
+3. layout-aware note segmentation using page structure, not only regex markers
+4. LLM extraction across the grouped clinical notes
+5. relation and timeline construction
+6. validation LLM review of the merged medical record
+7. API and frontend review with evidence provenance and source PDF comparison
 
----
+The goal is to preserve source evidence all the way through the pipeline. A final extracted field should be traceable back to page, region, backend, confidence, and supporting text.
 
-## Table of Contents
+## Current Architecture
 
-1. [What This Project Does](#1-what-this-project-does)
-2. [Architecture](#2-architecture)
-3. [Why These Technologies](#3-why-these-technologies)
-4. [Quick Start — Docker](#4-quick-start--docker)
-5. [Quick Start — Local Dev](#5-quick-start--local-dev)
-6. [Full Processing Flow](#6-full-processing-flow)
-7. [Frontend Pages](#7-frontend-pages)
-8. [REST API Endpoints](#8-rest-api-endpoints)
-9. [Configuration](#9-configuration)
-10. [Output Format](#10-output-format)
-11. [Data Model](#11-data-model)
-12. [Project Structure](#12-project-structure)
-13. [Performance & Hardware](#13-performance--hardware)
-14. [Requirements](#14-requirements)
-
----
-
-## 1. What This Project Does
-
-The platform reads hospital PDFs and turns them into structured patient data.
-
-Typical outputs include:
-
-- patient identity and document grouping
-- diagnoses and disease mentions
-- medications and treatment references
-- symptoms and follow-up notes
-- timelines and evidence quotes
-- merged patient summaries
-- patient-level knowledge-map data for visualisation
-
-At a high level:
-
-1. PDFs are imported into the system.
-2. Text is extracted by a fast native path or OCR path.
-3. Text is cleaned and split into smaller note-like sections.
-4. Regex extractors capture deterministic entities.
-5. An LLM fills in harder or less structured mentions.
-6. Mentions are merged into patient-level records.
-7. Django stores the data and exposes REST API endpoints.
-8. Next.js renders dashboard, patients, runs, documents, infra, and map pages.
-
----
-
-## 2. Architecture
-
-### System overview
-
-```
-Browser
-  -> Next.js frontend  (port 3000)
-  -> /api/v1/* rewrite
-  -> Django backend    (port 9000)
-  -> SQLite / media / model cache
+```text
+PDF input
+  -> native text extraction
+  -> page layout and artifact capture
+  -> layout-aware note grouping
+  -> LLM extraction over all useful notes
+  -> merge and normalization
+  -> validation LLM audit
+  -> relation graph
+  -> timeline events
+  -> Django API + Next.js review UI
 ```
 
-### Runtime ports
+## Name And Runtime Identity
 
-| Port | Service |
-|---|---|
-| `9000` | Django backend API + legacy server-rendered UI |
-| `3000` | Next.js frontend |
+The project-facing name is now `doc-reader`.
 
-### Processing flow
+Active runtime names:
 
+- Django settings package: `doc_reader`
+- Docker containers: `doc_reader_backend`, `doc_reader_worker`, `doc_reader_frontend`, `doc_reader_postgres`, `doc_reader_redis`
+- default Postgres database/user: `doc_reader`
+- preferred environment prefix: `DOC_READER_*`
+
+Legacy `EVOLET_*` variables are still accepted as compatibility fallbacks so older VM environments can keep running while the deployment is migrated.
+
+## OCR Stack
+
+## Parser Stack
+
+The parser layer is deliberately separate from the LLM. It is responsible for page structure, coordinates, reading order, tables, and evidence artifacts.
+
+Implemented parser adapters:
+
+- `docling`: full document conversion and structured artifact extraction when `docling` is installed
+- `surya`: line/layout/table recognition hook for deployments with `surya-ocr`
+- `paddle_structure`: PaddleOCR/PP-Structure hook for deployments with `paddleocr`
+
+These adapters are optional. If a parser package is missing, the pipeline records that in metadata and continues with the stable PyMuPDF/native extraction path.
+
+### Primary handwriting recognizer
+
+`microsoft/trocr-large-handwritten`
+
+This is the main handwriting OCR path. It is intended for cropped handwritten lines or compact regions, not entire noisy pages.
+
+### Verification and page OCR
+
+`stepfun-ai/GOT-OCR-2.0-hf`
+
+This is used for full-page OCR support, patch OCR, and verification of difficult or ambiguous regions.
+
+### Why the hybrid matters
+
+TrOCR is better as a focused handwriting recognizer. GOT-OCR is better as a broader OCR/VLM verifier for messy page structure. `doc-reader` uses both so the pipeline can handle handwritten crops and page-level uncertainty without forcing one model to do every job.
+
+## Data Model
+
+The upgraded backend stores both extracted meaning and source evidence:
+
+- `Patient`
+- `PDFDocument`
+- `PageLedger`
+- `NoteLedger`
+- `DocumentArtifact`
+- `Mention`
+- `MentionRelation`
+- `FinalRecord`
+- `PipelineRun`
+- `ProcessingLog`
+
+Artifacts carry information such as page number, bounding box, role, backend, confidence, text, and metadata. Relations connect mentions into diagnosis, treatment, test, evidence, and timeline-style structures.
+
+## Important Files
+
+Backend:
+
+- `evolet/manage.py`
+- `evolet/doc_reader/settings.py`
+- `evolet/pipeline/orchestrator.py`
+- `evolet/pipeline/models.py`
+- `evolet/pipeline/api_views.py`
+- `evolet/pipeline/views.py`
+- `evolet/pipeline/services/layout_segmenter.py`
+- `evolet/pipeline/services/ocr_backends/`
+- `evolet/pipeline/services/relation_extractor.py`
+- `evolet/pipeline/services/queue.py`
+
+Frontend:
+
+- `evolet/frontend/src/app/layout.tsx`
+- `evolet/frontend/src/app/page.tsx`
+- `evolet/frontend/src/app/patients/[id]/page.tsx`
+- `evolet/frontend/src/app/runs/page.tsx`
+- `evolet/frontend/src/app/runs/[id]/page.tsx`
+- `evolet/frontend/src/components/KnowledgeGraph.tsx`
+- `evolet/frontend/src/lib/api.ts`
+
+Historical prototype files:
+
+- `evolet_TMH_OCRd.ipynb`
+- `evolet_tmh_ocrd.py`
+
+## Environment
+
+Preferred runtime variables:
+
+```env
+DJANGO_SETTINGS_MODULE=doc_reader.settings
+DATABASE_URL=postgresql://doc_reader:doc_reader@postgres:5432/doc_reader
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_DB=0
+HF_TOKEN=...
+HUGGING_FACE_HUB_TOKEN=...
+DOC_READER_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
+DOC_READER_TROCR_MODEL_ID=microsoft/trocr-large-handwritten
+DOC_READER_GOT_OCR_MODEL_ID=stepfun-ai/GOT-OCR-2.0-hf
+DOC_READER_ENABLE_HANDWRITING_OCR=1
+DOC_READER_ENABLE_GOT_VERIFICATION=1
+DOC_READER_ENABLE_ADVANCED_PARSERS=1
+DOC_READER_PARSER_BACKENDS=docling,surya,paddle_structure
+DOC_READER_USE_4BIT=1
+DOC_READER_QUEUE_MODE=rq
+DOC_READER_DOC_WORKERS=4
 ```
-PDF Upload
-  -> PyMuPDF native text  (digital pages)
-  -> DocTR OCR            (scanned pages)
-  -> EasyOCR              (embedded images)
-  -> text cleaning + spell correction
-  -> note segmentation
-  -> regex extraction     (fast, deterministic — 60-80 % coverage)
-  -> LLM extraction       (Qwen 2.5 1.5B 4-bit — remaining mentions)
-  -> merge + deduplication
-  -> schema build + DB persist
-  -> API response
-  -> Next.js visualisation
+
+Compatibility variables:
+
+```env
+EVOLET_MODEL_ID=...
+EVOLET_TROCR_MODEL_ID=...
+EVOLET_GOT_OCR_MODEL_ID=...
+EVOLET_ENABLE_HANDWRITING_OCR=...
+EVOLET_ENABLE_GOT_VERIFICATION=...
 ```
 
-### Pipeline phases in detail
+## Local Development
 
-```
-Phase 1 · Extraction  ────────────────────────────────── parallel per-doc
-  1a. Native text    (PyMuPDF fast path)
-  1b. DocTR OCR      (GPU-accelerated, scanned pages)
-  1c. EasyOCR        (embedded image text)
-
-Phase 2 · Clean & Segment
-  2a. Text cleaner   (OCR noise, headers, duplicates)
-  2b. Spell corrector (SymSpell)
-  2c. Note segmenter  (page → clinical notes)
-
-Phase 3 · Extract ────────────────────────────────────── parallel per-note
-  3a. Regex NER      (deterministic, 15 categories)
-  3b. SKIP_EXISTING  (safe reruns)
-  3c. LLM queue      (notes not resolved by regex)
-
-Phase 4 · LLM Inference
-  Qwen 2.5 1.5B (4-bit) — adaptive batching
-  SHORT → batch 6 · MEDIUM → batch 4 · LONG → batch 2
-
-Phase 5 · Merge & Output ─────────────────────────────── parallel per-patient
-  Deduplicate · group · normalise · persist FinalRecord
-```
-
----
-
-## 3. Why These Technologies
-
-### Backend and orchestration
-
-- **Django** — strong ORM, admin, routing, management commands, stable foundation for data-heavy applications
-- **SQLite** — simple, portable, fast enough for a single-VM pipeline; persisted via Docker volume
-- **ThreadPoolExecutor** — parallel document extraction and patient merge without a separate job runner
-- **django.db.models.F()** — atomic counter increments across threads without race conditions
-
-### PDF and OCR
-
-- **PyMuPDF** — fastest path for digital PDFs with selectable text
-- **python-doctr** — GPU-accelerated document OCR for scanned pages
-- **EasyOCR** — text inside embedded images, stamps, screenshots
-- **Pillow / OpenCV** — image preprocessing during OCR stages
-
-### Information extraction
-
-- **Regex extraction** — fast, deterministic, explainable; handles the majority without GPU cost
-- **Qwen 2.5 Instruct** — handles harder cases where clinical language is unstructured
-- **bitsandbytes** — 4-bit quantisation so the LLM uses less VRAM
-- **accelerate** — model loading and inference runtime management
-- **json-repair + orjson** — recover malformed LLM JSON responses
-- **rapidfuzz** — fuzzy matching in merge and normalisation
-- **symspellpy** — fast spell correction for OCR-noisy text
-
-### Frontend
-
-- **Next.js 15** — file-based routing, production builds, easy Docker deployment
-- **React** — interactive dashboards, patient pages, rich visualisations
-- **Axios** — clean API client layer targeting the Django backend
-- **Framer Motion** — page transitions and motion polish
-- **D3** — patient knowledge graph layout
-- **Three.js / @react-three/fiber / @react-three/drei** — 3D visual background effects
-- **Lucide React** — consistent iconography
-- **Tailwind CSS + clsx + tailwind-merge** — dynamic class composition
-- **GSAP, Nivo, Recharts, react-dropzone** — animation, charts, file upload interactions
-
-### Deployment
-
-- **Docker + Docker Compose** — reproducible multi-container setup
-- **NVIDIA container runtime** — GPU access for OCR and LLM inference inside containers
-
----
-
-## 4. Quick Start — Docker
-
-### Prerequisites
-
-- Docker + Docker Compose v2
-- GPU: [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed on host
-- CPU-only: no extra setup needed
-
-### Clone
+Backend:
 
 ```bash
-git clone https://bitbucket.org/tmh_ocr/tmh.git
-cd tmh/evolet
-```
-
-### Build and run
-
-```bash
-# GPU server (L4 / T4 / A100)
-docker compose --profile gpu up -d
-
-# CPU-only machine
-docker compose --profile cpu up -d
-```
-
-| URL | Service |
-|---|---|
-| http://localhost:9000 | Django backend / legacy UI |
-| http://localhost:3000 | Next.js frontend |
-
-### Useful commands
-
-```bash
-docker compose logs -f                          # live logs
-docker compose --profile gpu up -d --build      # rebuild after code changes
-docker compose --profile gpu down               # stop
-docker exec -it evolet_gpu bash                 # shell into backend container
-```
-
-> **Disk space note:** the Docker build needs ~15 GB free (PyTorch CUDA wheels).
-> Run `docker system prune -f` first if space is tight.
-
-### Persistent volumes
-
-| Volume | Path inside container | Contents |
-|---|---|---|
-| `evolet_media` | `/app/media` | Uploaded PDF files |
-| `evolet_db` | `/app/data` | SQLite database |
-| `hf_cache` | `/root/.cache/huggingface` | LLM and OCR model weights |
-
-Model weights (~3 GB) download on first pipeline run and persist across restarts.
-
----
-
-## 5. Quick Start — Local Dev
-
-```bash
-# 1. Virtual environment
-python3 -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
-
-# 2. PyTorch CUDA first (prevents version conflicts)
-pip install torch==2.6.0+cu124 torchvision==0.21.0+cu124 \
-    --index-url https://download.pytorch.org/whl/cu124
-
-# 3. Remaining deps
-pip install -r requirements.txt
-
-# 4. Initialise DB
+cd evolet
 python manage.py migrate
-python manage.py collectstatic --noinput
-
-# 5. Start backend
+python manage.py check
+python manage.py verify_hf_access --model microsoft/trocr-large-handwritten
 python manage.py runserver 0.0.0.0:9000
 ```
 
-Frontend (separate terminal):
+Frontend:
 
 ```bash
-cd frontend
+cd evolet/frontend
 npm install
-npm run dev       # starts on http://localhost:3000
+npm run dev
 ```
 
----
+## Docker Deployment
 
-## 6. Full Processing Flow
-
-### Step 1 — Import PDFs
-
-Documents enter through upload or import flows. Each PDF is stored as a `PDFDocument` linked to a `Patient`.
-
-### Step 2 — Extract text
-
-The extraction layer picks the best path per page:
-
-- native text via PyMuPDF for digital PDFs
-- DocTR OCR for scanned pages
-- EasyOCR for embedded image text
-
-### Step 3 — Clean
-
-Removes OCR noise, duplicate headers/footers, broken spacing, and garbage characters.
-
-### Step 4 — Spell correct
-
-SymSpell fast-pass repairs common OCR distortions in medical text.
-
-### Step 5 — Segment
-
-Large page text is split into smaller note-like chunks for extraction.
-
-### Step 6 — Regex extraction
-
-Rule-based extraction detects: diagnosis · medication · symptom · procedure · pathology · follow-up · plan · imaging · lab · genomics · surgery · radiotherapy · performance status · status · other.
-
-### Step 7 — LLM extraction
-
-Qwen 2.5 1.5B handles harder sections: semi-structured summaries, free-form clinical text, richer relationship fields.
-
-### Step 8 — Merge and normalise
-
-Regex and LLM mentions are deduplicated, grouped, and normalised into a patient-level record.
-
-### Step 9 — Persist
-
-Merged results are stored in Django models. FinalRecord JSON and evidence-linked Mention rows are both saved.
-
-### Step 10 — API
-
-Django exposes REST-like endpoints at `/api/v1/*` consumed by the Next.js frontend.
-
-### Step 11 — Render
-
-Next.js fetches data and renders dashboard metrics, patient lists and detail pages, document inventory, run status, infrastructure info, and graph-based knowledge views.
-
----
-
-## 7. Frontend Pages
-
-| Route | Description |
-|---|---|
-| `/` | Dashboard — stats, recent activity, hardware/ETA panel |
-| `/patients` | Patient list with search |
-| `/patients/[id]` | Patient detail — accordion (Dx · Rx · Imaging · Notes), JSON viewer |
-| `/patients/[id]/knowledge-map` | D3 knowledge graph — categories and mention nodes |
-| `/documents` | Document inventory |
-| `/runs` | Pipeline run list and status |
-| `/infra` | Infrastructure info — GPU, CPU, RAM, compute tier |
-| `/settings` | Settings |
-
----
-
-## 8. REST API Endpoints
-
-All endpoints are under `/api/v1/`. The Next.js frontend rewrites same-origin `/api/v1/*` calls to the Django backend.
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/v1/dashboard` | Summary stats |
-| GET | `/api/v1/documents` | Document list |
-| GET | `/api/v1/patients` | Patient list |
-| GET | `/api/v1/patients/<id>` | Patient detail + mentions |
-| GET | `/api/v1/patients/<id>/knowledge-map` | Graph nodes and edges |
-| GET | `/api/v1/runs` | Run list |
-| GET | `/api/v1/runs/<id>` | Run detail + logs |
-| GET | `/api/v1/system` | Hardware info + ETA |
-| POST | `/api/v1/runs/<id>/cancel` | Cancel active run |
-
----
-
-## 9. Configuration
-
-All tuneable parameters are environment variables — no code changes needed.
-
-Set them in the `environment:` block in `docker-compose.yml`:
-
-```yaml
-environment:
-  DJANGO_SECRET_KEY: "change-this-in-production"
-  DJANGO_DEBUG: "0"
-  EVOLET_MODEL_ID: "Qwen/Qwen2.5-1.5B-Instruct"
-  EVOLET_USE_4BIT: "1"
-  EVOLET_DOC_WORKERS: "4"
-  HF_TOKEN: "hf_xxx"
+```bash
+cd evolet
+docker compose --profile gpu up -d --build
 ```
 
-| Variable | Default | Description |
-|---|---|---|
-| `DJANGO_SECRET_KEY` | dev key | Change in production |
-| `DJANGO_DEBUG` | `1` | Set to `0` in production |
-| `EVOLET_MODEL_ID` | `Qwen/Qwen2.5-1.5B-Instruct` | HuggingFace model ID |
-| `EVOLET_USE_4BIT` | `1` | 4-bit quantisation (saves ~1.5 GB VRAM) |
-| `EVOLET_DOC_WORKERS` | `4` | Parallel document extraction threads |
-| `EVOLET_MAX_WORKERS` | `4` | Parallel threads for other stages |
-| `HF_TOKEN` | _(empty)_ | HuggingFace auth token for gated models |
+Default services:
 
----
+- frontend: `http://localhost:3000`
+- backend API: `http://localhost:9000/api/v1/dashboard/`
+- Postgres: `doc_reader_postgres`
+- Redis: `doc_reader_redis`
 
-## 10. Output Format
+## Live VM
 
-Each patient produces a JSON record stored in the database and downloadable from the UI:
+The last known deployed VM target is:
 
-```json
-{
-  "patient_code": "TMH_2023_001",
-  "mentions": [
-    {
-      "category": "diagnosis",
-      "value": "Renal Cell Carcinoma, Stage III",
-      "date_text": "15.03.2023",
-      "certainty": "confirmed",
-      "evidence_quote": "Final Diagnosis: RCC Stage III",
-      "source_pages": [2],
-      "origin": "regex"
-    },
-    {
-      "category": "medication",
-      "value": "Tab Sunitinib 50mg OD",
-      "date_text": "20.03.2023",
-      "certainty": "confirmed",
-      "evidence_quote": "Tab Sunitinib 50mg OD for 4 weeks",
-      "source_pages": [4],
-      "origin": "llm"
-    }
-  ],
-  "grouped_record": {
-    "diagnosis":  ["Renal Cell Carcinoma, Stage III"],
-    "medication": ["Tab Sunitinib 50mg OD"],
-    "imaging":    ["CT Abdomen — March 2023"],
-    "follow_up":  ["Review after 4 weeks"]
-  },
-  "stats": {
-    "page_count": 12,
-    "note_count": 8,
-    "mentions_after_merge": 14
-  }
-}
+- SSH: `ssh -i D:\data\evolet_rsa pardeep@34.126.112.227`
+- frontend: `http://34.126.112.227:3000`
+- backend: `http://34.126.112.227:9000/api/v1/dashboard/`
+
+The VM has an L4 GPU and is the right target for the TrOCR/GOT-OCR workload.
+
+### Live runner
+
+The frontend now has a live run monitor:
+
+- runs list: `http://34.126.112.227:3000/runs`
+- latest validation run: `http://34.126.112.227:3000/runs/f5429551-e07c-4745-93cf-319f8a9acf45`
+- YOLO validation run: `http://34.126.112.227:3000/runs/62ba872e-de75-411c-bc2e-2c4abeb952dd`
+- run detail API: `http://34.126.112.227:9000/api/v1/runs/f5429551-e07c-4745-93cf-319f8a9acf45/`
+
+The run detail page polls the API and shows:
+
+- live status, progress, processed PDF count, processing rate, and ETA while active
+- stream-style processing logs from `ProcessingLog`
+- only the documents and patients attached to the selected run
+- links from each processed result into the patient detail page
+
+The patient list is result-focused by default. It filters to patients with completed `FinalRecord` rows, so an imported folder with many PDFs does not appear as extracted output until those documents have actually been processed.
+
+Patient detail now includes a `Compare` tab. It embeds the source PDF through:
+
+```text
+/api/v1/documents/<document_id>/pdf/
 ```
 
-**Extracted categories:** `diagnosis` · `medication` · `imaging` · `pathology` · `symptom` · `lab` · `genomics` · `surgery` · `radiotherapy` · `plan` · `follow_up` · `performance_status` · `procedure` · `status` · `other`
+The PDF is streamed inline by Django and proxied through the Next.js app, so extracted fields, evidence quotes, validation flags, and the original source file can be reviewed side by side.
 
----
+### Chemotherapy dataset validation
 
-## 11. Data Model
+The chemotherapy folder was uploaded to the VM from:
 
-```
-Patient  ──<  PDFDocument  ──<  PageLedger    (one row per PDF page)
-                            └─<  NoteLedger    (one row per clinical note)
-
-Mention        >──  Patient / PDFDocument / PipelineRun / NoteLedger
-FinalRecord    >──  Patient                   (one merged JSON per patient)
-PipelineRun    >──<  PDFDocument              (many-to-many)
-ProcessingLog  >──  PipelineRun               (timestamped INFO / WARN / ERR entries)
+```text
+E:\doc_ocr\drive-download-chenmotherapy data
 ```
 
----
+VM paths:
 
-## 12. Project Structure
+- uploaded archive: `/home/pardeep/chemotherapy_pdfs.tar.gz`
+- extracted data: `/home/pardeep/data/doc-reader-chemotherapy`
+- container mount: `/data/doc-reader-chemotherapy`
 
-```
-tmh/
-└── evolet/                          # repo root is the Django project
-    ├── Dockerfile                   # backend container (CUDA 12.4 + cuDNN 9)
-    ├── docker-compose.yml           # gpu + cpu profiles, 3 named volumes
-    ├── docker-entrypoint.sh         # migrate → collectstatic → runserver
-    ├── manage.py
-    ├── requirements.txt
-    │
-    ├── evolet/                      # Django project config
-    │   ├── settings.py              # env-var driven, SQLite, WhiteNoise, CORS
-    │   ├── urls.py
-    │   ├── jinja2.py                # Jinja2 environment for legacy templates
-    │   └── wsgi.py
-    │
-    ├── pipeline/                    # core Django app
-    │   ├── models.py                # Patient → PDF → Page → Note → Mention → FinalRecord
-    │   ├── views.py                 # legacy server-rendered UI actions
-    │   ├── api_views.py             # JSON endpoints for Next.js frontend
-    │   ├── urls.py                  # all URL patterns incl. /api/v1/*
-    │   ├── orchestrator.py          # phase coordinator (ThreadPoolExecutor, F() atomics)
-    │   └── services/
-    │       ├── config.py            # all tuneable knobs
-    │       ├── pdf_extractor.py     # native + DocTR OCR + EasyOCR (thread-safe singletons)
-    │       ├── text_cleaner.py      # OCR noise removal
-    │       ├── text_corrector.py    # SymSpell correction
-    │       ├── note_segmenter.py    # page → note splitting + triage
-    │       ├── regex_extractor.py   # deterministic NER (15 categories)
-    │       ├── llm_engine.py        # Qwen inference + adaptive batching
-    │       ├── merger.py            # deduplication + final record assembly
-    │       ├── schema_builder.py    # output schema construction
-    │       ├── qc.py                # quality metrics + coverage scoring
-    │       ├── json_utils.py        # LLM JSON repair (4-stage fallback)
-    │       └── gpu_utils.py         # CUDA/CPU detect, VRAM, ETA estimation
-    │
-    ├── templates/                   # legacy Jinja2 server-rendered UI (fallback)
-    │   ├── base.html
-    │   ├── dashboard.html
-    │   └── pipeline/
-    │       ├── patient_detail.html  # 3D knowledge graph + JSON viewer
-    │       ├── run_detail.html      # live log viewer + cancel button
-    │       ├── components/          # reusable partials
-    │       └── partials/            # HTMX response fragments
-    │
-    ├── static/
-    │   ├── css/main.css             # aurora mesh background, dark mode, animations
-    │   └── js/app.js                # Alpine stores: toasts, spotlight, etaPanel
-    │
-    └── frontend/                    # Next.js 15 app (primary UI)
-        ├── Dockerfile               # frontend container
-        ├── next.config.ts           # /api/v1/* rewrite → Django backend
-        ├── package.json
-        └── src/
-            ├── app/
-            │   ├── page.tsx                         # dashboard
-            │   ├── patients/page.tsx                # patient list
-            │   ├── patients/[id]/page.tsx           # patient detail
-            │   ├── patients/[id]/knowledge-map/     # D3 knowledge graph
-            │   ├── documents/page.tsx
-            │   ├── runs/page.tsx
-            │   ├── infra/page.tsx
-            │   └── settings/page.tsx
-            ├── components/
-            │   ├── KnowledgeGraph.tsx               # D3 graph visualisation
-            │   ├── Sidebar.tsx                      # navigation
-            │   └── ThreeBackground.tsx              # Three.js background
-            └── lib/
-                ├── api.ts                           # Axios API client
-                └── utils.ts
-```
+Import result:
 
----
+- PDFs found locally: 175
+- PDFs imported on VM: 175
+- skipped on import: 0
 
-## 13. Performance & Hardware
+Per request, the all-PDF run was stopped and superseded by a first-10-PDF validation run. The clean validation run is:
 
-### Benchmarks (GCP L4 — 24 GB VRAM)
+- run ID: `f5429551-e07c-4745-93cf-319f8a9acf45`
+- name: `Chemotherapy 10 PDF validation run 2026-05-18 forced clean`
+- status: completed
+- processed PDFs: 10 / 10
+- final records shown: 10
+- run-linked mentions: 90
+- LLM fallback: completed with 2 / 2 LLM batches and 7 LLM mentions
+- 4-bit quantization: disabled for this validation run to avoid the bitsandbytes import path
 
-| Stage | Time per PDF |
-|---|---|
-| Native text extraction | < 1 s |
-| DocTR OCR (scanned pages) | 3–8 s |
-| EasyOCR (embedded images) | 1–4 s |
-| Regex NER | < 0.5 s |
-| LLM (Qwen 2.5 1.5B, 4-bit) | 5–15 s |
-| Merge & persist | < 1 s |
-| **Total (typical)** | **~25–30 s** |
+Runtime fixes applied during validation:
 
-### Compute tiers
+- mounted `/home/pardeep/data` into the containers as `/data:ro`
+- fixed the worker entrypoint so `rqworker` starts correctly
+- switched the worker path to `rq.SimpleWorker` to avoid CUDA fork issues
+- tightened handwriting OCR routing so TrOCR/GOT do not run on every small native text block
+- added run telemetry fields in the API: elapsed seconds, processing rate, remaining PDFs, ETA seconds/text, and latest log timestamp
+- added run detail polling and live logs in the Next.js frontend
+- made `DOC_READER_SKIP_EXISTING=0` available for forced validation reruns while keeping skip-existing behavior on by default
+- wired `--no-4bit` into the actual LLM model loader
+- clamped generated LLM short fields before database insert so model prose cannot overflow fixed-length columns
 
-| Tier | Hardware | ETA |
-|---|---|---|
-| `gpu_fast` | GPU >= 20 GB VRAM | ~20 s/PDF |
-| `gpu_std` | GPU < 20 GB VRAM | ~40 s/PDF |
-| `cpu` | CPU only | ~180 s/PDF |
+Additional detection/validation run:
 
----
+- run ID: `62ba872e-de75-411c-bc2e-2c4abeb952dd`
+- name: `Chemotherapy 10 PDF YOLO validation run 2026-05-18`
+- status: completed
+- processed PDFs: 10 / 10
+- total mentions: 99
+- run-linked mentions: 93
+- YOLO layout artifacts: 183
+- final records shown: 10
+- LLM fallback: completed with 2 / 2 batches and 9 LLM mentions
 
-## 14. Requirements
+This run uses the optional `yolo_layout` parser backend with `Armaggheddon/yolo11-document-layout` and `yolo11n_doc_layout.pt` for DocLayNet-style page-region detection. It also writes a validation payload into `FinalRecord.stats.validation` and `FinalRecord.grouped_record.validation`. The default validation backend is heuristic for reliability; set `DOC_READER_VALIDATION_BACKEND=model` to attempt the configured MedGemma/Gemma validation model (`DOC_READER_VALIDATION_MODEL_ID`, default `google/medgemma-1.5-4b-it`) when model access and VRAM are available.
 
-| Requirement | Minimum |
-|---|---|
-| Python | 3.10+ |
-| Node.js | 18+ (frontend) |
-| GPU VRAM | 6 GB (24 GB recommended) |
-| CUDA | 12.4 (provided by container) |
-| Disk — build | 15 GB free |
-| Disk — runtime | ~3 GB model weights + PDF storage |
-| RAM | 8 GB+ |
+## Verified Status
 
-> CPU-only mode works via `docker compose --profile cpu up -d` but LLM phase takes ~3 min per note instead of ~5 s.
+The advanced reader work added:
 
----
+- TrOCR backend
+- GOT-OCR backend
+- OCR backend interface
+- layout-aware artifact generation
+- relation extraction
+- queue launch helper
+- expanded database migration
+- evidence-aware frontend updates
+- Docker and VM runtime wiring
+- live run ETA and log monitoring
+- run-isolated result browsing for validation batches
 
-## License
+Known remaining hardening work:
 
-Proprietary — 4BaseCare / TMH Project. All rights reserved.
+- switch backend serving from Django runserver to Gunicorn
+- install and benchmark optional `requirements-advanced.txt` parser packages on the GPU VM
+- add artifact crop previews and page overlays in the frontend
+- add API tests for patient detail, evidence artifacts, and relation graph responses

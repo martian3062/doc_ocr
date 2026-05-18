@@ -3,7 +3,7 @@ Management command to import PDFs from a local folder.
 
 Usage:
     python manage.py import_folder /path/to/pdfs
-    python manage.py import_folder   # uses default EVOLET_DATA_DIR
+    python manage.py import_folder   # uses default DOC_READER_DATA_DIR
 """
 from pathlib import Path
 from django.core.management.base import BaseCommand
@@ -18,7 +18,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "folder",
             nargs="?",
-            default=str(settings.EVOLET_DATA_DIR),
+            default=str(settings.DOC_READER_DATA_DIR),
             help="Path to folder containing PDF files",
         )
 

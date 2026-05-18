@@ -1,5 +1,5 @@
 """
-Evolet Pipeline — Django Views
+doc-reader Pipeline — Django Views
 ================================
 HTMX-powered views for the medical report OCR pipeline web UI.
 
@@ -25,7 +25,6 @@ For normal (non-HTMX) requests, views redirect or return full pages.
 import json
 import shutil
 import tempfile
-import threading
 import logging
 from pathlib import Path
 
@@ -44,6 +43,7 @@ from .models import (
 )
 from .services.gpu_utils import gpu_info, system_info
 from .services.qc import compute_run_summary
+from .services.queue import enqueue_pipeline_run
 
 logger = logging.getLogger("pipeline")
 
@@ -275,10 +275,10 @@ def folder_browser(request):
     Browse a server-side directory for importable files (.pdf, .json, .txt).
 
     Path is taken from the "path" query parameter; defaults to
-    settings.EVOLET_DATA_DIR.  Shows import status for each file (whether
+    settings.DOC_READER_DATA_DIR. Shows import status for each file (whether
     a PDFDocument row already exists with that folder_path).
     """
-    folder_path = request.GET.get("path", str(settings.EVOLET_DATA_DIR))
+    folder_path = request.GET.get("path", str(settings.DOC_READER_DATA_DIR))
     error = None
     files = []
 
@@ -464,28 +464,6 @@ def run_detail(request, run_id):
     })
 
 
-def _launch_pipeline_thread(run: PipelineRun) -> None:
-    """
-    Spawn a daemon thread to execute the pipeline for *run*.
-
-    Daemon threads are cleaned up automatically if the Django process exits,
-    which is the desired behaviour — a crashed server should not leave
-    zombie pipeline processes.
-    """
-    def _worker():
-        try:
-            from .orchestrator import run_full_pipeline
-            run_full_pipeline(run)
-        except Exception as exc:
-            run.status        = PipelineRun.Status.FAILED
-            run.error_message = str(exc)
-            run.completed_at  = timezone.now()
-            run.save()
-            logger.exception("Pipeline run %s failed: %s", run.id.hex[:8], exc)
-
-    threading.Thread(target=_worker, daemon=True).start()
-
-
 @require_POST
 def start_run(request):
     """
@@ -513,7 +491,7 @@ def start_run(request):
     )
     run.documents.set(documents)
 
-    _launch_pipeline_thread(run)
+    enqueue_pipeline_run(run)
 
     return redirect("pipeline:run_detail", run_id=run.id)
 
@@ -546,7 +524,7 @@ def start_run_one(request):
     )
     run.documents.set([doc])
 
-    _launch_pipeline_thread(run)
+    enqueue_pipeline_run(run)
 
     return redirect("pipeline:run_detail", run_id=run.id)
 
@@ -664,7 +642,7 @@ def download_run_zip(request, run_id):
     patients = Patient.objects.filter(documents__runs=run).distinct()
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        zip_dir = Path(tmp_dir) / f"evolet_run_{run.id.hex[:8]}"
+        zip_dir = Path(tmp_dir) / f"doc_reader_run_{run.id.hex[:8]}"
         zip_dir.mkdir()
 
         for patient in patients:
@@ -682,7 +660,7 @@ def download_run_zip(request, run_id):
         return FileResponse(
             open(zip_path, "rb"),
             as_attachment=True,
-            filename=f"evolet_run_{run.id.hex[:8]}.zip",
+            filename=f"doc_reader_run_{run.id.hex[:8]}.zip",
         )
 
 

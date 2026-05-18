@@ -1,0 +1,1 @@
+# doc-reader Django project

@@ -87,7 +87,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("pipeline")
 
 # ── Schema version ────────────────────────────────────────────────────────────
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "3.0-adaptive"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -681,6 +681,68 @@ def _build_clinical_notes(mentions: List[Dict[str, Any]]) -> Dict[str, Any]:
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _canonical_category(category: Any) -> str:
+    value = re.sub(r"[^a-zA-Z0-9]+", "_", str(category or "uncategorized").strip().lower())
+    return value.strip("_") or "uncategorized"
+
+
+def _adaptive_item(mention: Dict[str, Any]) -> Dict[str, Any]:
+    parsed = _safe(parse_mention_subfields, mention, default=_parse_generic(mention))
+    return {
+        "category": _canonical_category(mention.get("category")),
+        "label": mention.get("label") or "",
+        "value": mention.get("value") or "",
+        "normalized_value": mention.get("normalized_value") or mention.get("value") or "",
+        "date_text": mention.get("date_text") or "",
+        "certainty": mention.get("certainty") or "unknown",
+        "attributes": mention.get("attributes") or {},
+        "evidence_quote": mention.get("evidence_quote") or "",
+        "source_pages": mention.get("source_pages") or [],
+        "evidence_ids": mention.get("evidence_ids") or [],
+        "evidence_artifact_ids": mention.get("evidence_artifact_ids") or [],
+        "origin": mention.get("origin") or "",
+        "parsed": parsed,
+    }
+
+
+def _build_adaptive_sections(grouped_record: Dict[str, List]) -> Dict[str, Any]:
+    sections: Dict[str, Any] = {}
+    for raw_category, mentions in sorted((grouped_record or {}).items()):
+        key = _canonical_category(raw_category)
+        section_mentions = mentions if isinstance(mentions, list) else []
+        sections[key] = {
+            "title": str(raw_category or "Uncategorized").replace("_", " ").title(),
+            "count": len(section_mentions),
+            "items": [_adaptive_item(m) for m in section_mentions if isinstance(m, dict)],
+        }
+    return sections
+
+
+def _build_optional_clinical_summary(mentions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    clinical_categories = {
+        "diagnosis", "medication", "procedure", "imaging", "lab", "pathology",
+        "genomics", "symptom", "plan", "follow_up", "radiotherapy", "surgery",
+        "status", "performance_status",
+    }
+    if not {_canonical_category(m.get("category")) for m in mentions}.intersection(clinical_categories):
+        return {}
+    return {
+        "diagnoses": [_adaptive_item(m) for m in mentions if _canonical_category(m.get("category")) == "diagnosis"],
+        "treatments": [
+            _adaptive_item(m) for m in mentions
+            if _canonical_category(m.get("category")) in {"medication", "procedure", "radiotherapy", "surgery"}
+        ],
+        "investigations": [
+            _adaptive_item(m) for m in mentions
+            if _canonical_category(m.get("category")) in {"imaging", "lab", "pathology", "genomics"}
+        ],
+        "notes": [
+            _adaptive_item(m) for m in mentions
+            if _canonical_category(m.get("category")) in {"symptom", "plan", "follow_up", "status", "performance_status"}
+        ],
+    }
+
+
 def build_deep_schema(
     patient_code:   str,
     source_pdf:     str,
@@ -709,24 +771,23 @@ def build_deep_schema(
 
     Returns
     -------
-    A nested dict following SCHEMA_VERSION "2.0" structure:
+    A nested dict following the adaptive schema:
 
-      identity          : patient identifiers and source info
-      oncology_summary  : primary diagnosis, PS, disease status
-      treatment         : medications, surgery, radiotherapy
-      investigations    : imaging, pathology, labs, genomics
-      clinical_notes    : symptoms, plan, follow_up
-      other             : mentions that don't fit the above groups
+      identity          : patient/document identifiers and source info
+      document_summary  : dynamic category counts from the LLM mentions
+      sections          : category-keyed sections built from the actual PDF data
+      clinical_summary  : optional convenience grouping when clinical categories exist
       mentions_flat     : complete corrected mention list (preserved)
       grouped_record    : original category-keyed grouping (preserved)
       traceability      : source pages + evidence IDs
       stats             : extraction statistics
       review_flags      : QC flags
-      schema_version    : "2.0"
+      schema_version    : current adaptive schema version
     """
-    # Determine which categories are known vs. "other"
-    known_categories = set(_CATEGORY_GROUP.keys())
-    other_mentions   = [m for m in mentions_flat if m.get("category") not in known_categories]
+    # Build sections from the categories the LLM actually found.
+    sections = _build_adaptive_sections(grouped_record)
+    category_counts = {category: section["count"] for category, section in sections.items()}
+    clinical_summary = _build_optional_clinical_summary(mentions_flat)
 
     schema: Dict[str, Any] = {
         # ── Identity ──────────────────────────────────────────────────────
@@ -738,14 +799,16 @@ def build_deep_schema(
         },
 
         # ── Clinical sections ─────────────────────────────────────────────
-        "oncology_summary": _build_oncology_summary(mentions_flat),
-        "treatment":        _build_treatment(mentions_flat),
-        "investigations":   _build_investigations(mentions_flat),
-        "clinical_notes":   _build_clinical_notes(mentions_flat),
+        "document_summary": {
+            "category_count": len(sections),
+            "mention_count": len(mentions_flat),
+            "categories": sorted(sections.keys()),
+            "category_counts": category_counts,
+        },
+        "sections": sections,
+        "clinical_summary": clinical_summary,
 
         # ── Uncategorised mentions ────────────────────────────────────────
-        "other": [_safe(_parse_generic, m) for m in other_mentions],
-
         # ── Preserved originals (for backward compatibility) ──────────────
         "mentions_flat":  mentions_flat,
         "grouped_record": grouped_record,
@@ -761,8 +824,7 @@ def build_deep_schema(
         "Deep schema built for %s: %d mentions → %d sections",
         patient_code,
         len(mentions_flat),
-        sum(1 for s in ["oncology_summary", "treatment", "investigations", "clinical_notes"]
-            if schema.get(s)),
+        len(sections),
     )
 
     return schema

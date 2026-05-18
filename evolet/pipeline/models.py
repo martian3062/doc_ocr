@@ -1,5 +1,5 @@
 """
-Evolet Pipeline — Database Models
+doc-reader Pipeline — Database Models
 ===================================
 Eight Django models that mirror the pipeline's artifact hierarchy:
 
@@ -176,6 +176,9 @@ class PageLedger(models.Model):
     word_count      = models.IntegerField(default=0)
     alpha_ratio     = models.FloatField(default=0.0)
     need_ocr        = models.BooleanField(default=False)
+    page_width      = models.FloatField(default=0.0)
+    page_height     = models.FloatField(default=0.0)
+    layout_blocks   = models.JSONField(default=list, blank=True)
 
     class Meta:
         unique_together = ("document", "page_num")
@@ -206,6 +209,8 @@ class NoteLedger(models.Model):
     is_low_value = models.BooleanField(default=False)
     needs_llm    = models.BooleanField(default=False)
     is_resolved  = models.BooleanField(default=False)
+    layout_hint  = models.JSONField(default=dict, blank=True)
+    artifact_ids = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["document", "page_num", "note_ix"]
@@ -250,6 +255,7 @@ class Mention(models.Model):
     evidence_quote   = models.TextField(blank=True)
     source_pages     = models.JSONField(default=list, blank=True)
     evidence_ids     = models.JSONField(default=list, blank=True)
+    evidence_artifact_ids = models.JSONField(default=list, blank=True)
     origin           = models.CharField(
         max_length=10, choices=Origin.choices, default=Origin.REGEX
     )
@@ -291,6 +297,8 @@ class FinalRecord(models.Model):
     review_flags   = models.JSONField(default=list)   # ["no_mentions_after_merge", …]
     traceability   = models.JSONField(default=dict)   # {source_pages, evidence_ids}
     stats          = models.JSONField(default=dict)   # raw/merged counts, category count
+    relation_graph = models.JSONField(default=dict, blank=True)
+    timeline_events = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -330,3 +338,106 @@ class ProcessingLog(models.Model):
 
     def __str__(self):
         return f"[{self.level}] {self.stage}: {self.message[:80]}"
+
+
+class DocumentArtifact(models.Model):
+    """
+    Layout-aware document artifact produced during page understanding.
+
+    Artifacts capture the evidence-native layer of the advanced pipeline:
+    text blocks, tables, stamps, signatures, figures, handwritten regions,
+    and OCR line crops with coordinates and backend provenance.
+    """
+
+    class ArtifactType(models.TextChoices):
+        TEXT_BLOCK = "text_block", "Text block"
+        TEXT_LINE = "text_line", "Text line"
+        TABLE = "table", "Table"
+        HEADER = "header", "Header"
+        FOOTER = "footer", "Footer"
+        STAMP = "stamp", "Stamp"
+        SIGNATURE = "signature", "Signature"
+        HANDWRITING = "handwriting", "Handwriting"
+        FIGURE = "figure", "Figure"
+        IMAGE = "image", "Image"
+        PAGE_REGION = "page_region", "Page region"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="artifacts")
+    document = models.ForeignKey(PDFDocument, on_delete=models.CASCADE, related_name="artifacts")
+    page = models.ForeignKey(
+        PageLedger, on_delete=models.SET_NULL, related_name="artifacts",
+        null=True, blank=True,
+    )
+    note = models.ForeignKey(
+        NoteLedger, on_delete=models.SET_NULL, related_name="artifacts",
+        null=True, blank=True,
+    )
+    run = models.ForeignKey(
+        PipelineRun, on_delete=models.SET_NULL, related_name="artifacts",
+        null=True, blank=True,
+    )
+    artifact_type = models.CharField(max_length=30, choices=ArtifactType.choices)
+    role = models.CharField(max_length=50, blank=True)
+    backend = models.CharField(max_length=50, blank=True)
+    text = models.TextField(blank=True)
+    normalized_text = models.TextField(blank=True)
+    confidence = models.FloatField(default=0.0)
+    bbox = models.JSONField(default=list, blank=True)
+    polygon = models.JSONField(default=list, blank=True)
+    page_num = models.IntegerField(default=0)
+    reading_order = models.IntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["document", "page_num", "reading_order", "artifact_type"]
+
+    def __str__(self):
+        return f"{self.artifact_type} p{self.page_num} {self.document}"
+
+
+class MentionRelation(models.Model):
+    """
+    Patient-level relation edge built from extracted mentions and evidence.
+
+    This allows the knowledge view to move beyond category grouping into
+    timeline events, treatment episodes, and cross-mention evidence links.
+    """
+
+    class RelationType(models.TextChoices):
+        HAS_DIAGNOSIS = "has_diagnosis", "Has diagnosis"
+        TREATED_WITH = "treated_with", "Treated with"
+        EVIDENCED_BY = "evidenced_by", "Evidenced by"
+        TEST_RESULT = "test_result", "Test result"
+        FOLLOWED_BY = "followed_by", "Followed by"
+        RELATED_TO = "related_to", "Related to"
+        OCCURRED_ON = "occurred_on", "Occurred on"
+        PROGRESSION = "progression", "Progression"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="relations")
+    run = models.ForeignKey(
+        PipelineRun, on_delete=models.SET_NULL, related_name="relations",
+        null=True, blank=True,
+    )
+    source_mention = models.ForeignKey(
+        Mention, on_delete=models.SET_NULL, related_name="outgoing_relations",
+        null=True, blank=True,
+    )
+    target_mention = models.ForeignKey(
+        Mention, on_delete=models.SET_NULL, related_name="incoming_relations",
+        null=True, blank=True,
+    )
+    relation_type = models.CharField(max_length=40, choices=RelationType.choices)
+    confidence = models.FloatField(default=0.0)
+    evidence_artifact_ids = models.JSONField(default=list, blank=True)
+    evidence_pages = models.JSONField(default=list, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["patient__code", "relation_type", "created_at"]
+
+    def __str__(self):
+        return f"{self.patient.code} {self.relation_type}"
