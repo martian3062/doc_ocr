@@ -1,0 +1,10 @@
+*.tar.gz
+*.zip
+.env
+.env.*
+__pycache__/
+*.py[cod]
+node_modules/
+.next/
+staticfiles/
+media/

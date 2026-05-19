@@ -45,9 +45,14 @@ type DashboardData = {
     parsers_enabled: boolean;
     parser_backends: string[];
     handwriting_model: string;
+    medical_handwriting_model?: string;
+    medocr_reference_dataset?: string;
     verification_model: string;
     handwriting_ocr_enabled: boolean;
+    medical_handwriting_ocr_enabled?: boolean;
+    page_vision_sweep_enabled?: boolean;
     verification_enabled: boolean;
+    medical_validation_required?: boolean;
   };
 };
 
@@ -162,9 +167,24 @@ export default function Dashboard() {
               active={Boolean(stack?.handwriting_ocr_enabled)}
             />
             <PipelineItem
+              title="Medical handwriting"
+              value={stack?.medical_handwriting_model || stack?.medocr_reference_dataset || "MedOCR reference dataset"}
+              active={Boolean(stack?.medical_handwriting_ocr_enabled)}
+            />
+            <PipelineItem
+              title="Page vision sweep"
+              value="Header + vitals + handwritten orders"
+              active={Boolean(stack?.page_vision_sweep_enabled)}
+            />
+            <PipelineItem
               title="Verification OCR"
               value={stack?.verification_model || "stepfun-ai/GOT-OCR-2.0-hf"}
               active={Boolean(stack?.verification_enabled)}
+            />
+            <PipelineItem
+              title="Medical validation"
+              value={stack?.medical_validation_required ? "Required after extraction" : "Heuristic fallback"}
+              active={Boolean(stack?.medical_validation_required)}
             />
             <PipelineItem
               title="Extraction output"

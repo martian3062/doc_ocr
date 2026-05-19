@@ -2,14 +2,17 @@
 
 This module audits the merged patient/document record after regex/LLM extraction.  It is
 designed to run safely on every deployment: heuristic validation is always
-available, and a MedGemma/Gemma-style model pass is used only when explicitly
-configured and loadable on the host.
+available, and a MedGemma/Gemma-style model pass is required by default after
+the main extraction/schema stage. The record still persists if the model cannot
+load, but the validation payload carries a failed/required status so the UI and
+exports cannot mistake it for a completed medical audit.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections import Counter
 from typing import Any, Dict, List
 
@@ -25,6 +28,7 @@ OPTIONAL_MEDICAL_CATEGORIES = {
 
 _VALIDATION_PIPELINE_CACHE: dict[tuple[str, str], Any] = {}
 _FAILED_VALIDATION_MODELS: set[str] = set()
+_VALIDATION_PIPELINE_LOCK = threading.Lock()
 
 
 def validate_final_record(
@@ -51,9 +55,21 @@ def validate_final_record(
 
     if not config.ENABLE_MEDICAL_VALIDATION:
         payload["status"] = "disabled"
+        if config.REQUIRE_MEDICAL_VALIDATION:
+            payload["status"] = "required_but_disabled"
+            payload["flags"] = sorted(set(payload["flags"] + ["medical_validation_disabled"]))
         return payload
 
     if config.VALIDATION_BACKEND.strip().lower() != "model":
+        payload["backend"] = config.VALIDATION_BACKEND.strip().lower() or "heuristic"
+        payload["model_notes"] = "Safe medical validation completed with heuristic rules."
+        return payload
+
+    if not getattr(config, "ENABLE_TRANSFORMER_VALIDATION", False):
+        payload["model_notes"] = "Transformer validation disabled; heuristic validation applied."
+        if config.REQUIRE_MEDICAL_VALIDATION:
+            payload["status"] = "required_but_transformer_disabled"
+            payload["flags"] = sorted(set(payload["flags"] + ["medical_validation_transformer_disabled"]))
         return payload
 
     model_payload = _model_validation(
@@ -65,6 +81,8 @@ def validate_final_record(
     )
     if model_payload:
         payload.update(model_payload)
+    if config.REQUIRE_MEDICAL_VALIDATION and payload.get("status") != "completed":
+        payload["flags"] = sorted(set(payload.get("flags", []) + ["medical_validation_required_not_completed"]))
     return payload
 
 
@@ -169,6 +187,9 @@ def _model_validation(
         "backend": "model",
         "model_id": config.VALIDATION_MODEL_ID,
         "status": "failed",
+        "flags": sorted(set(heuristic["flags"] + ["medical_validation_model_failed"])),
+        "missing_categories": heuristic["missing_categories"],
+        "confidence": heuristic["confidence"],
         "model_notes": " | ".join(errors[-3:]),
     }
 
@@ -181,21 +202,27 @@ def _build_validation_pipeline(pipeline_fn, model_id: str):
     if text_cache_key in _VALIDATION_PIPELINE_CACHE:
         return _VALIDATION_PIPELINE_CACHE[text_cache_key], "text-generation"
 
-    common_kwargs = {
-        "model": model_id,
-        "token": config.HF_TOKEN,
-        "device_map": "auto",
-    }
-    if config.LOCAL_FILES_ONLY:
-        common_kwargs["model_kwargs"] = {"local_files_only": True}
-    try:
-        generator = pipeline_fn("image-text-to-text", **common_kwargs)
-        _VALIDATION_PIPELINE_CACHE[image_cache_key] = generator
-        return generator, "image-text-to-text"
-    except Exception:
-        generator = pipeline_fn("text-generation", **common_kwargs)
-        _VALIDATION_PIPELINE_CACHE[text_cache_key] = generator
-        return generator, "text-generation"
+    with _VALIDATION_PIPELINE_LOCK:
+        if image_cache_key in _VALIDATION_PIPELINE_CACHE:
+            return _VALIDATION_PIPELINE_CACHE[image_cache_key], "image-text-to-text"
+        if text_cache_key in _VALIDATION_PIPELINE_CACHE:
+            return _VALIDATION_PIPELINE_CACHE[text_cache_key], "text-generation"
+
+        common_kwargs = {
+            "model": model_id,
+            "token": config.HF_TOKEN,
+            "device_map": "auto",
+        }
+        if config.LOCAL_FILES_ONLY:
+            common_kwargs["model_kwargs"] = {"local_files_only": True}
+        try:
+            generator = pipeline_fn("image-text-to-text", **common_kwargs)
+            _VALIDATION_PIPELINE_CACHE[image_cache_key] = generator
+            return generator, "image-text-to-text"
+        except Exception:
+            generator = pipeline_fn("text-generation", **common_kwargs)
+            _VALIDATION_PIPELINE_CACHE[text_cache_key] = generator
+            return generator, "text-generation"
 
 
 def _run_validation_pipeline(generator, task: str, prompt: str) -> str:
@@ -277,14 +304,22 @@ def _validation_prompt(
         "patient_code": patient_code,
         "source_pdf": source_pdf,
         "mentions": compact_mentions,
+        "document_profile": grouped_record.get("document_profile", {}),
+        "major_info": grouped_record.get("major_info", {}),
+        "section_names": list((grouped_record.get("sections") or {}).keys())[:80],
+        "all_extracted_content": {
+            "status": (grouped_record.get("all_extracted_content") or {}).get("status"),
+            "page_count": (grouped_record.get("all_extracted_content") or {}).get("page_count"),
+            "source_text_word_count": (grouped_record.get("all_extracted_content") or {}).get("source_text_word_count"),
+        },
         "grouped_keys": list(grouped_record.keys())[:60],
         "heuristic": heuristic,
     }
     return (
-        "You are validating document extraction for a new PDF type. Return exactly one JSON object and no reasoning. "
+        "You are validating full-text document extraction and adaptive schema generation for a new PDF type. Return exactly one JSON object and no reasoning. "
         "Do not include markdown, thoughts, explanations, or source payload echo. The JSON must contain "
         "confidence (0-1), flags (array), missing_categories (array), and notes. "
-        "Check if extracted fields are plausible for this document, evidence-backed, and "
-        "whether important information seems missing based on the categories actually present.\n\n"
+        "Check whether the auto-defined schema fits the document type, whether major info and sections are evidence-backed, "
+        "whether the extraction appears shallow versus the full text, and whether MedGemma-style medical validation should flag missing or uncertain fields.\n\n"
         f"{json.dumps(payload, ensure_ascii=False)}"
     )

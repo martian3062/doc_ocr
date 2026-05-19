@@ -44,6 +44,12 @@ import logging
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
+try:
+    from rapidfuzz import fuzz, process
+    _RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    _RAPIDFUZZ_AVAILABLE = False
+
 logger = logging.getLogger("pipeline")
 
 # ── SymSpell optional import ──────────────────────────────────────────────────
@@ -342,3 +348,45 @@ def correct_all_mentions(
                     changed, len(mentions))
 
     return corrected
+
+
+def correction_report(original: List[Dict[str, Any]], corrected: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Summarise rules, SymSpell, and RapidFuzz checks for record quality."""
+    changed_fields: Dict[str, int] = {field: 0 for field in _CORRECTABLE_FIELDS}
+    changed_mentions = 0
+    medical_similarity_hits = 0
+
+    for orig, corr in zip(original or [], corrected or []):
+        changed = False
+        for field in _CORRECTABLE_FIELDS:
+            if orig.get(field) != corr.get(field):
+                changed_fields[field] += 1
+                changed = True
+        if changed:
+            changed_mentions += 1
+
+        if _RAPIDFUZZ_AVAILABLE:
+            text = " ".join(
+                str(corr.get(field, ""))
+                for field in ("label", "value", "normalized_value")
+                if corr.get(field)
+            )
+            tokens = re.findall(r"[A-Za-z][A-Za-z\-]{4,}", text.lower())
+            for token in tokens[:40]:
+                match = process.extractOne(token, _MEDICAL_WHITELIST, scorer=fuzz.WRatio)
+                if match and match[1] >= 92 and match[0] != token:
+                    medical_similarity_hits += 1
+                    break
+
+    return {
+        "status": "completed",
+        "libraries": [
+            "rules",
+            "symspellpy" if _SYMSPELL_AVAILABLE else "symspellpy_unavailable",
+            "rapidfuzz" if _RAPIDFUZZ_AVAILABLE else "rapidfuzz_unavailable",
+        ],
+        "corrected_mentions": changed_mentions,
+        "changed_fields": {key: value for key, value in changed_fields.items() if value},
+        "medical_similarity_hits": medical_similarity_hits,
+        "transformer_layer": "disabled",
+    }

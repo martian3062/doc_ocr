@@ -28,9 +28,12 @@ This module owns everything GPU-related for the extraction phase:
   idle GPU time (from under-utilising it with tiny notes one-at-a-time).
 """
 
+import json
 import time
 import logging
 from typing import Any, Dict, List, Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import torch
 
@@ -41,6 +44,7 @@ from .json_utils import parse_json_loose
 from .gpu_utils import detect_compute_dtype, release_cuda
 
 logger = logging.getLogger("pipeline")
+GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -213,7 +217,10 @@ def _build_prompt(note: Dict[str, Any]) -> str:
         f"note_id={note['note_id']}\n"
         f"page_num={note['page_num']}\n"
         f"regex_mentions_already_found={len(note.get('regex_mentions', []))}\n\n"
-        f"Extract clinically useful mentions from this note and return JSON only.\n\n"
+        "Extract all meaningful structured content from this note in depth and return JSON only. "
+        "Do not summarize only the highlights; preserve every identifiable field, table row, "
+        "date, value, instruction, observation, medication, investigation, diagnosis, plan, "
+        "identifier, and administrative detail as separate mentions when possible.\n\n"
         f"note_text:\n{note_text}"
     ).strip()
 
@@ -332,6 +339,9 @@ def _generate_batch(
 
     Returns a list of decoded strings, one per input prompt.
     """
+    if config.LLM_PROVIDER == "groq":
+        return _generate_batch_groq(prompts, max_new_tokens=max_new_tokens)
+
     if _tokenizer is None or _model is None:
         raise RuntimeError("Model not loaded — call load_model() before inference.")
 
@@ -384,6 +394,80 @@ def _generate_batch(
         new_tokens = outputs[i][prompt_len:]
         decoded.append(_tokenizer.decode(new_tokens, skip_special_tokens=True).strip())
     return decoded
+
+
+def _generate_batch_groq(
+    prompts: List[str],
+    max_new_tokens: int = config.MAX_NEW_TOKENS,
+) -> List[str]:
+    if not config.GROQ_API_KEY:
+        raise RuntimeError("Groq extraction requested but DOC_READER_GROQ_API_KEY/GROQ_API_KEY is missing")
+
+    outputs: List[str] = []
+    for prompt in prompts:
+        body = {
+            "model": config.GROQ_EXTRACTION_MODEL,
+            "temperature": 0,
+            "max_completion_tokens": max_new_tokens,
+            "messages": [
+                {"role": "system", "content": config.SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        }
+        t0 = time.time()
+        data = _post_groq(body)
+        elapsed = time.time() - t0
+        logger.info(
+            "Groq LLM note model=%s max_new=%d time=%.1fs",
+            config.GROQ_EXTRACTION_MODEL,
+            max_new_tokens,
+            elapsed,
+        )
+        outputs.append(data["choices"][0]["message"]["content"].strip())
+    return outputs
+
+
+def _post_groq(body: Dict[str, Any]) -> Dict[str, Any]:
+    last_error = ""
+    for attempt in range(4):
+        req = Request(
+            GROQ_CHAT_URL,
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {config.GROQ_API_KEY}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "doc-reader-groq-extraction/1.0",
+            },
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=config.GROQ_EXTRACTION_TIMEOUT_SECONDS) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            last_error = f"Groq HTTP {exc.code}: {detail[:500]}"
+            if exc.code != 429 or attempt == 3:
+                raise RuntimeError(last_error) from exc
+            time.sleep(_retry_delay_seconds(exc, detail, attempt))
+        except URLError as exc:
+            raise RuntimeError(f"Groq request failed: {exc}") from exc
+    raise RuntimeError(last_error or "Groq request failed")
+
+
+def _retry_delay_seconds(exc: HTTPError, detail: str, attempt: int) -> float:
+    retry_after = exc.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return min(float(retry_after), 70.0)
+        except ValueError:
+            pass
+    import re
+
+    match = re.search(r"try again in ([0-9.]+)s", detail, flags=re.IGNORECASE)
+    if match:
+        return min(float(match.group(1)) + 0.75, 70.0)
+    return 2.5 * (attempt + 1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

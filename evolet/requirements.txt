@@ -43,6 +43,7 @@ pydantic>=2.9               # Data validation
 json-repair>=0.30           # Fix malformed JSON from LLM
 tqdm>=4.66                  # Progress bars
 rq>=1.16                    # Queue workers
+setuptools>=75,<81          # pkg_resources compatibility for SymSpell
 
 # ── Text correction (new) ────────────────────────────────────────────────────
 symspellpy>=6.7             # Fast spell correction (symmetric-delete algorithm)

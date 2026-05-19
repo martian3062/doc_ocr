@@ -87,7 +87,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("pipeline")
 
 # ── Schema version ────────────────────────────────────────────────────────────
-SCHEMA_VERSION = "3.0-adaptive"
+SCHEMA_VERSION = "4.0-auto-schema"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

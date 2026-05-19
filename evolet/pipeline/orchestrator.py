@@ -59,8 +59,9 @@ from .services.pdf_extractor    import extract_pdf_pages, normalize_text, word_c
 from .services.note_segmenter   import triage_notes
 from .services.llm_engine       import load_model, process_unresolved_notes, unload_model
 from .services.merger           import build_final_record
-from .services.text_corrector   import correct_all_mentions
+from .services.text_corrector   import correct_all_mentions, correction_report
 from .services.schema_builder   import build_deep_schema
+from .services.auto_schema      import enrich_with_auto_schema
 from .services.qc               import compute_qc_metrics
 from .services.photo_extractor  import extract_profile_photo
 from .services.gpu_utils        import setup_gpu, release_cuda
@@ -68,6 +69,7 @@ from .services.layout_segmenter import extract_document_artifacts, segment_layou
 from .services.regex_extractor  import extract_note_mentions
 from .services.relation_extractor import build_relation_payload
 from .services.validation import validate_final_record
+from .services.artifact_extractor import extract_artifact_mentions
 
 logger = logging.getLogger("pipeline")
 
@@ -287,9 +289,30 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
             for note in NoteLedger.objects.filter(document=doc)
         }
 
+        artifact_mentions = extract_artifact_mentions(artifacts, page_rows)
+
         # Persist regex-extracted mentions (only from resolved notes)
         Mention.objects.filter(patient=patient, run=run, origin="regex").delete()
         regex_mention_objects = []
+        for m in artifact_mentions:
+            regex_mention_objects.append(Mention(
+                patient          = patient,
+                document         = doc,
+                run              = run,
+                note             = None,
+                category         = m["category"],
+                label            = m["label"],
+                value            = m["value"],
+                normalized_value = m["normalized_value"],
+                date_text        = m.get("date_text", ""),
+                certainty        = m.get("certainty", "unknown"),
+                attributes       = m.get("attributes", {}),
+                evidence_quote   = m.get("evidence_quote", ""),
+                source_pages     = m.get("source_pages", []),
+                evidence_ids     = m.get("evidence_ids", []),
+                evidence_artifact_ids = m.get("evidence_artifact_ids", []),
+                origin           = "regex",
+            ))
         if not config.LLM_EXTRACT_ALL_NOTES:
             for resolved_note in triaged["resolved"]:
                 for m in resolved_note.get("mentions", []):
@@ -314,6 +337,7 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
                     ))
         if regex_mention_objects:
             Mention.objects.bulk_create(regex_mention_objects)
+        result["regex_mentions"] += len(artifact_mentions)
 
         # Pass unresolved notes up to the orchestrator for batched LLM processing
         result["unresolved_notes_data"] = triaged["unresolved"]
@@ -370,10 +394,21 @@ def run_llm_phase(run: PipelineRun, doc_results: List[dict]) -> None:
                 len(all_unresolved), len(doc_results))
 
     # Load model (singleton — already loaded if called twice)
-    try:
-        load_model(model_id=run.model_id, use_4bit=run.use_4bit)
-    except Exception as exc:
-        _log(run, "error", "llm", f"Model load failed: {exc}")
+    if config.LLM_PROVIDER == "local":
+        if not config.ENABLE_LOCAL_HF_LLM:
+            _log(run, "warning", "llm", "Local HF LLM is disabled; skipping unresolved-note LLM phase")
+            return
+        try:
+            load_model(model_id=run.model_id, use_4bit=run.use_4bit)
+        except Exception as exc:
+            _log(run, "error", "llm", f"Model load failed: {exc}")
+            return
+    elif config.LLM_PROVIDER == "groq":
+        if not config.GROQ_API_KEY:
+            _log(run, "warning", "llm", "Groq key missing; skipping unresolved-note LLM phase")
+            return
+    else:
+        _log(run, "warning", "llm", f"Unsupported LLM provider: {config.LLM_PROVIDER}")
         return
 
     def _progress(done: int, total: int) -> None:
@@ -438,7 +473,8 @@ def run_llm_phase(run: PipelineRun, doc_results: List[dict]) -> None:
 
     finally:
         # Always unload the model after this phase to free GPU for other work
-        unload_model()
+        if config.LLM_PROVIDER == "local":
+            unload_model()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -459,6 +495,13 @@ def run_merge_phase(run: PipelineRun) -> None:
 
     patients = Patient.objects.filter(documents__runs=run).distinct()
 
+    def _group_mentions_for_schema(mentions: list[dict]) -> dict[str, list[dict]]:
+        grouped: dict[str, list[dict]] = {}
+        for mention in mentions:
+            category = str(mention.get("category") or "uncategorized")
+            grouped.setdefault(category, []).append(mention)
+        return grouped
+
     def _merge_one(patient: Patient) -> None:
         try:
             mentions = list(
@@ -469,33 +512,60 @@ def run_merge_phase(run: PipelineRun) -> None:
                     "evidence_artifact_ids", "origin",
                 )
             )
-            doc        = patient.documents.first()
-            page_count = PageLedger.objects.filter(document=doc).count() if doc else 0
-            note_count = NoteLedger.objects.filter(document=doc).count() if doc else 0
+            run_docs = list(patient.documents.filter(runs=run).order_by("original_filename"))
+            doc = run_docs[0] if run_docs else patient.documents.first()
+            source_pdf = ", ".join(d.original_filename for d in run_docs) if run_docs else (doc.original_filename if doc else "")
+            page_qs = PageLedger.objects.filter(document__in=run_docs) if run_docs else PageLedger.objects.filter(document=doc)
+            note_qs = NoteLedger.objects.filter(document__in=run_docs) if run_docs else NoteLedger.objects.filter(document=doc)
+            page_count = page_qs.count() if doc else 0
+            note_count = note_qs.count() if doc else 0
+            source_text = "\n\n".join(
+                page_qs.order_by("document__original_filename", "page_num").values_list("text", flat=True)
+            )
+            source_pages = [
+                {
+                    "document": page.document.original_filename if page.document else "",
+                    "page_num": page.page_num,
+                    "selected_source": page.selected_source,
+                    "text": page.text,
+                }
+                for page in page_qs.select_related("document").order_by("document__original_filename", "page_num")
+            ]
 
             final_data = build_final_record(
                 patient_code = patient.code,
-                source_pdf   = doc.original_filename if doc else "",
+                source_pdf   = source_pdf,
                 page_count   = page_count,
                 note_count   = note_count,
                 all_mentions = mentions,
             )
             corrected_mentions = correct_all_mentions(final_data["mentions"])
+            spell_check_payload = correction_report(final_data["mentions"], corrected_mentions)
+            corrected_grouped_record = _group_mentions_for_schema(corrected_mentions)
             deep_schema = build_deep_schema(
                 patient_code   = patient.code,
-                source_pdf     = doc.original_filename if doc else "",
+                source_pdf     = source_pdf,
                 mentions_flat  = corrected_mentions,
-                grouped_record = final_data["grouped_record"],
+                grouped_record = corrected_grouped_record,
                 traceability   = final_data["traceability"],
                 stats          = final_data["stats"],
                 review_flags   = final_data["review_flags"],
                 page_count     = final_data["page_count"],
                 note_count     = final_data["note_count"],
             )
+            deep_schema = enrich_with_auto_schema(
+                base_schema=deep_schema,
+                patient_code=patient.code,
+                source_pdf=source_pdf,
+                source_text=source_text,
+                mentions=corrected_mentions,
+                spell_check=spell_check_payload,
+                source_pages=source_pages,
+            )
             relation_payload = build_relation_payload(corrected_mentions)
             validation_payload = validate_final_record(
                 patient_code=patient.code,
-                source_pdf=doc.original_filename if doc else "",
+                source_pdf=source_pdf,
                 mentions=corrected_mentions,
                 grouped_record=deep_schema,
                 stats=final_data["stats"],
@@ -507,8 +577,11 @@ def run_merge_phase(run: PipelineRun) -> None:
             merged_stats = {
                 **final_data["stats"],
                 "validation": validation_payload,
+                "auto_schema": deep_schema.get("quality_checks", {}).get("auto_schema", {}),
+                "text_corrections_applied": spell_check_payload.get("corrected_mentions", 0),
             }
             deep_schema["validation"] = validation_payload
+            deep_schema.setdefault("quality_checks", {})["validation"] = validation_payload
             FinalRecord.objects.update_or_create(
                 patient  = patient,
                 defaults = {
@@ -559,7 +632,10 @@ def run_merge_phase(run: PipelineRun) -> None:
         except Exception as exc:
             _log(run, "error", "merge", f"Merge failed for {patient.code}: {exc}")
 
-    merge_workers = min(config.MAX_WORKERS, max(1, patients.count()))
+    # Medical transformer validation can load a multi-GB model. Keep the merge
+    # stage serial when it is enabled so a small run cannot start one validator
+    # per patient and overwhelm the VM.
+    merge_workers = 1 if config.ENABLE_TRANSFORMER_VALIDATION else min(config.MAX_WORKERS, max(1, patients.count()))
     with concurrent.futures.ThreadPoolExecutor(max_workers=merge_workers) as executor:
         list(executor.map(_merge_one, patients))
 

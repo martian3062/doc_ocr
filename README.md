@@ -1,157 +1,114 @@
 # doc-reader
 
-`doc-reader` is an evidence-native clinical document reader for hospital PDFs, scanned reports, mixed-layout records, and difficult handwritten notes. It is built to turn source documents into traceable structured medical data, not just loose OCR text.
+`doc-reader` is a clinical PDF understanding system for hospital records, scanned reports, chemotherapy sheets, and doctor handwriting. It is designed to produce evidence-linked structured medical data, not just OCR text.
 
-The current default system is LLM-first: native PDF text is grouped into document notes, every useful note goes through the extraction LLM, and a validation LLM audits the merged record. Heavy OCR/layout engines such as TrOCR, GOT-OCR, Docling, Surya, PaddleOCR, and YOLO are optional comparison backends, not the default path.
+The current architecture is intentionally layered:
 
-## Current Update
+1. collect all available text and page evidence
+2. detect layout, tables, page regions, and likely handwritten order zones
+3. crop difficult regions and read them with vision OCR
+4. normalize medical short forms and drug-name variants
+5. build adaptive schema records with evidence, confidence, page, and bounding-box provenance
+6. validate the final medical record
 
-Recent work moved the app from a parser/OCR-heavy clinical demo into the current `doc_ocr` GitHub project:
+## Current Status
 
-- published the repo to `https://github.com/martian3062/doc_ocr.git`
-- slimmed the default dependency path so `requirements.txt` avoids heavy OCR/layout packages
-- moved optional CV/OCR/parser packages into `evolet/requirements-advanced.txt`
-- made extraction LLM-first by default with `DOC_READER_LLM_EXTRACT_ALL_NOTES=1`
-- added model validation with MedGemma primary and Qwen fallback
-- replaced the old hardcoded oncology output shape with adaptive schema `3.0-adaptive`
-- fixed Docker Compose so normal `docker compose up -d --build` works without a broken profile dependency
-- added a bright sparkling white/sky-blue frontend theme
-- added an inline PDF preview to patient detail so the source PDF stays on the left while extracted fields remain on the right
-- verified frontend production builds with `npm run build`
+The latest VM deployment uses a safe hybrid stack:
 
-## What It Does
+- PyMuPDF/native PDF extraction for embedded text and page rendering
+- optional PaddleOCR PP-Structure parser, capped by page count and GPU memory limits
+- Groq vision OCR for page/crop reading
+- dedicated handwriting order extraction for doctor-written medicine/vital regions
+- medical short-form normalization before schema extraction
+- MedOCR reference layer using `naazimsnh02/medocr-vision-dataset` as prompt/evaluation context
+- Groq text/schema models for adaptive extraction when quota is available
+- heuristic validation by default, with local HF validation disabled unless explicitly enabled
 
-`doc-reader` reads clinical documents through a hybrid document-understanding pipeline:
+Recent verified VM runs:
 
-1. native PDF text extraction when the PDF already contains reliable text
-2. page and region artifact generation with coordinates and reading order
-3. layout-aware note segmentation using page structure, not only regex markers
-4. LLM extraction across the grouped clinical notes
-5. relation and timeline construction
-6. validation LLM review of the merged medical record
-7. API and frontend review with evidence provenance and source PDF comparison
+- `3 PDF handwriting order extractor clean run 2026-05-19`: completed, 97 mentions, extracted handwritten chemo orders including Palonosetron, Paclitaxel 150mg, Trastuzumab 264mg, and Docetaxel 95mg from a page crop.
+- `3 PDF handwriting order extractor final clean run 2026-05-19`: completed extraction, 89 mentions, but Groq text schema cleanup hit the daily token limit during final auto-schema calls.
+- `1 PDF handwriting chart crop extraction-only 2026-05-19`: completed, 43 mentions, chart-page crop detection enabled.
 
-The goal is to preserve source evidence all the way through the pipeline. A final extracted field should be traceable back to page, region, backend, confidence, and supporting text.
+Operational note: Groq API keys are runtime secrets. Set them in the VM/container environment; do not commit them.
 
-## Current Architecture
+## Pipeline
 
 ```text
-PDF input
-  -> native text extraction
-  -> page layout and artifact capture
-  -> layout-aware note grouping
-  -> LLM extraction over all useful notes
-  -> merge and normalization
-  -> validation LLM audit
-  -> relation graph
-  -> timeline events
+PDF/image input
+  -> native PDF text extraction
+  -> page rendering and quality checks
+  -> optional PaddleOCR/PP-Structure layout parsing
+  -> page vision sweep over clinical regions
+  -> handwriting_order_extractor for medicine/vital chart crops
+  -> medical short-form and drug normalization
+  -> artifact and mention extraction
+  -> adaptive schema construction
+  -> validation
   -> Django API + Next.js review UI
 ```
 
-## Name And Runtime Identity
+Every extracted value should keep source evidence:
 
-The project-facing name is now `doc-reader`.
+- document and page number
+- artifact backend
+- bounding box where available
+- evidence quote
+- confidence
+- normalized value
+- extraction method
 
-Active runtime names:
+## Handwriting Order Layer
 
-- Django settings package: `doc_reader`
-- Docker containers: `doc_reader_backend`, `doc_reader_worker`, `doc_reader_frontend`, `doc_reader_postgres`, `doc_reader_redis`
-- default Postgres database/user: `doc_reader`
-- preferred environment prefix: `DOC_READER_*`
+Doctor handwriting is handled as a separate crop-level layer, not as normal whole-page OCR.
 
-Legacy `EVOLET_*` variables are still accepted as compatibility fallbacks so older VM environments can keep running while the deployment is migrated.
+Main files:
 
-## Default LLM Stack
+- `evolet/pipeline/services/handwriting_order_extractor.py`
+- `evolet/pipeline/services/medical_short_forms.py`
+- `evolet/pipeline/services/medocr_reference.py`
+- `evolet/pipeline/services/artifact_extractor.py`
 
-The default runtime is intentionally light:
+What it does:
 
-- PyMuPDF/native PDF text extraction
-- grouped note segmentation
-- `Qwen/Qwen2.5-1.5B-Instruct` extraction
-- MedGemma validation when accessible
-- `Qwen/Qwen2.5-1.5B-Instruct` validation fallback when MedGemma does not return strict JSON or model access is unavailable
-- adaptive JSON schema based on the categories the LLM actually extracts
+- takes page/layout artifacts from native text, page vision, and optional Paddle layout
+- detects probable medicine/injection chart pages
+- creates focused crops for vitals, orders, and staff-nurse medicine charts
+- sends each crop to Groq vision with a strict medicine/vitals JSON prompt
+- normalizes short forms such as `Inj`, `IV`, `BD`, `TDS`, `STAT`, `NS`, `DNS`, and `RL`
+- normalizes common doctor-writing variants such as `PAN` to pantoprazole, `TRASTU` to trastuzumab, `DOCET` to docetaxel, and `PALONONAIL` to palonosetron
+- stores the result as handwriting artifacts before schema extraction
 
-Regex is retained only as an optional fallback/triage path. It is not the default extraction authority.
+The MedOCR dataset layer uses:
 
-## Optional OCR And Parser Stack
+```text
+naazimsnh02/medocr-vision-dataset
+```
 
-The parser layer is deliberately separate from the LLM. It is responsible for page structure, coordinates, reading order, tables, and evidence artifacts.
+It is a reference/evaluation layer for examples and prompting. It is not treated as a runnable inference model.
 
-Implemented parser adapters:
+## Model And Provider Strategy
 
-- `docling`: full document conversion and structured artifact extraction when `docling` is installed
-- `surya`: line/layout/table recognition hook for deployments with `surya-ocr`
-- `paddle_structure`: PaddleOCR/PP-Structure hook for deployments with `paddleocr`
+Default safe VM mode:
 
-These adapters are optional. If a parser package is missing, the pipeline records that in metadata and continues with the stable PyMuPDF/native extraction path.
+- text/schema provider: Groq
+- vision/crop OCR: Groq vision
+- local HF LLMs: disabled by default
+- local HF vision models: disabled by default
+- validation: heuristic by default
+- PaddleOCR: optional advanced parser, capped
 
-### Primary handwriting recognizer
+Optional local/HF models remain supported:
 
-`microsoft/trocr-large-handwritten`
+- `Qwen/Qwen2.5-1.5B-Instruct`
+- `google/medgemma-1.5-4b-it`
+- `microsoft/trocr-large-handwritten`
+- `stepfun-ai/GOT-OCR-2.0-hf`
+- `Armaggheddon/yolo11-document-layout`
 
-This is the main handwriting OCR path. It is intended for cropped handwritten lines or compact regions, not entire noisy pages.
+Use local models only when GPU memory and access are confirmed.
 
-### Verification and page OCR
-
-`stepfun-ai/GOT-OCR-2.0-hf`
-
-This is used for full-page OCR support, patch OCR, and verification of difficult or ambiguous regions.
-
-### Why the optional hybrid matters
-
-TrOCR is better as a focused handwriting recognizer. GOT-OCR is better as a broader OCR/VLM verifier for messy page structure. These are useful for comparison or difficult scanned PDFs, but they are disabled by default so the normal app stays LLM-oriented and efficient.
-
-## Data Model
-
-The upgraded backend stores both extracted meaning and source evidence:
-
-- `Patient`
-- `PDFDocument`
-- `PageLedger`
-- `NoteLedger`
-- `DocumentArtifact`
-- `Mention`
-- `MentionRelation`
-- `FinalRecord`
-- `PipelineRun`
-- `ProcessingLog`
-
-Artifacts carry information such as page number, bounding box, role, backend, confidence, text, and metadata. Relations connect mentions into diagnosis, treatment, test, evidence, and timeline-style structures.
-
-## Important Files
-
-Backend:
-
-- `evolet/manage.py`
-- `evolet/doc_reader/settings.py`
-- `evolet/pipeline/orchestrator.py`
-- `evolet/pipeline/models.py`
-- `evolet/pipeline/api_views.py`
-- `evolet/pipeline/views.py`
-- `evolet/pipeline/services/layout_segmenter.py`
-- `evolet/pipeline/services/ocr_backends/`
-- `evolet/pipeline/services/relation_extractor.py`
-- `evolet/pipeline/services/queue.py`
-
-Frontend:
-
-- `evolet/frontend/src/app/layout.tsx`
-- `evolet/frontend/src/app/page.tsx`
-- `evolet/frontend/src/app/patients/[id]/page.tsx`
-- `evolet/frontend/src/app/runs/page.tsx`
-- `evolet/frontend/src/app/runs/[id]/page.tsx`
-- `evolet/frontend/src/components/KnowledgeGraph.tsx`
-- `evolet/frontend/src/lib/api.ts`
-
-Historical prototype files:
-
-- `evolet_TMH_OCRd.ipynb`
-- `evolet_tmh_ocrd.py`
-
-## Environment
-
-Preferred runtime variables:
+## Key Environment Variables
 
 ```env
 DJANGO_SETTINGS_MODULE=doc_reader.settings
@@ -159,34 +116,44 @@ DATABASE_URL=postgresql://doc_reader:doc_reader@postgres:5432/doc_reader
 REDIS_HOST=redis
 REDIS_PORT=6379
 REDIS_DB=0
-HF_TOKEN=...
-HUGGING_FACE_HUB_TOKEN=...
-DOC_READER_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
-DOC_READER_LLM_EXTRACT_ALL_NOTES=1
-DOC_READER_ENABLE_MEDICAL_VALIDATION=1
-DOC_READER_VALIDATION_BACKEND=model
-DOC_READER_VALIDATION_MODEL_ID=google/medgemma-1.5-4b-it
-DOC_READER_VALIDATION_FALLBACK_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
-DOC_READER_TROCR_MODEL_ID=microsoft/trocr-large-handwritten
-DOC_READER_GOT_OCR_MODEL_ID=stepfun-ai/GOT-OCR-2.0-hf
-DOC_READER_ENABLE_HANDWRITING_OCR=0
-DOC_READER_ENABLE_GOT_VERIFICATION=0
-DOC_READER_ENABLE_ADVANCED_PARSERS=0
-DOC_READER_PARSER_BACKENDS=
-DOC_READER_USE_4BIT=1
-DOC_READER_QUEUE_MODE=rq
-DOC_READER_DOC_WORKERS=4
+
+DOC_READER_GROQ_API_KEY=...
+DOC_READER_LLM_PROVIDER=groq
+DOC_READER_GROQ_EXTRACTION_MODEL=llama-3.3-70b-versatile
+DOC_READER_SCHEMA_PROVIDER=groq
+DOC_READER_SCHEMA_MODEL=llama-3.3-70b-versatile
+
+DOC_READER_ENABLE_GROQ_VISION_OCR=1
+DOC_READER_GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+DOC_READER_ENABLE_PAGE_VISION_SWEEP=1
+DOC_READER_PAGE_VISION_MAX_PAGES_PER_DOCUMENT=5
+DOC_READER_PAGE_VISION_MAX_CROPS_PER_PAGE=4
+
+DOC_READER_ENABLE_HANDWRITING_ORDER_EXTRACTOR=1
+DOC_READER_HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT=5
+DOC_READER_HANDWRITING_ORDER_MAX_CROPS_PER_PAGE=8
+DOC_READER_HANDWRITING_ORDER_RENDER_DPI=220
+
+DOC_READER_ENABLE_MEDOCR_REFERENCE_LAYER=1
+DOC_READER_MEDOCR_VISION_DATASET_ID=naazimsnh02/medocr-vision-dataset
+
+DOC_READER_ENABLE_ADVANCED_PARSERS=1
+DOC_READER_PARSER_BACKENDS=paddle_structure
+DOC_READER_PADDLE_STRUCTURE_DEVICE=gpu:0
+DOC_READER_PADDLE_STRUCTURE_GPU_MEMORY_FRACTION=0.55
+DOC_READER_PADDLE_STRUCTURE_GPU_STOP_FRACTION=0.80
+DOC_READER_PADDLE_STRUCTURE_MAX_PAGES_PER_DOCUMENT=5
+DOC_READER_PADDLE_STRUCTURE_CPU_THREADS=1
+
+DOC_READER_ENABLE_LOCAL_HF_LLM=0
+DOC_READER_ENABLE_LOCAL_HF_VISION_MODELS=0
+DOC_READER_VALIDATION_BACKEND=heuristic
+DOC_READER_ENABLE_TRANSFORMER_VALIDATION=0
+DOC_READER_DOC_WORKERS=1
+DOC_READER_MAX_WORKERS=4
 ```
 
-Compatibility variables:
-
-```env
-EVOLET_MODEL_ID=...
-EVOLET_TROCR_MODEL_ID=...
-EVOLET_GOT_OCR_MODEL_ID=...
-EVOLET_ENABLE_HANDWRITING_OCR=...
-EVOLET_ENABLE_GOT_VERIFICATION=...
-```
+Legacy `EVOLET_*` variables are still accepted as compatibility fallbacks through `evolet/pipeline/services/config.py`.
 
 ## Local Development
 
@@ -196,7 +163,6 @@ Backend:
 cd evolet
 python manage.py migrate
 python manage.py check
-python manage.py verify_hf_access --model microsoft/trocr-large-handwritten
 python manage.py runserver 0.0.0.0:9000
 ```
 
@@ -206,6 +172,13 @@ Frontend:
 cd evolet/frontend
 npm install
 npm run dev
+```
+
+Production frontend build:
+
+```bash
+cd evolet/frontend
+npm run build
 ```
 
 ## Docker Deployment
@@ -224,139 +197,94 @@ Default services:
 
 ## Live VM
 
-The last known deployed VM target is:
+Last deployed target:
 
-- SSH: `ssh -i D:\data\evolet_rsa pardeep@34.126.112.227`
+```text
+ssh -i D:\data\evolet_rsa pardeep@34.126.112.227
+```
+
+Live URLs:
+
 - frontend: `http://34.126.112.227:3000`
-- backend: `http://34.126.112.227:9000/api/v1/dashboard/`
+- backend dashboard API: `http://34.126.112.227:9000/api/v1/dashboard/`
+- runs page: `http://34.126.112.227:3000/runs`
 
-The VM has an L4 GPU and is the right target for LLM extraction/validation and optional TrOCR/GOT-OCR comparison work.
+The VM has an NVIDIA L4 GPU. Keep GPU-heavy paths capped:
 
-### Live runner
+- one document worker for GPU parser/vision runs
+- max four general workers
+- Paddle GPU memory fraction below 0.8
+- page and crop caps on all vision routes
 
-The frontend now has a live run monitor:
+## Useful Commands
 
-- runs list: `http://34.126.112.227:3000/runs`
-- LLM-first validation run: `http://34.126.112.227:3000/runs/bb7238df-ef15-4dfc-a824-157f57714eb4`
-- YOLO comparison run: `http://34.126.112.227:3000/runs/62ba872e-de75-411c-bc2e-2c4abeb952dd`
-- run detail API: `http://34.126.112.227:9000/api/v1/runs/f5429551-e07c-4745-93cf-319f8a9acf45/`
+Run a bounded handwriting extraction test:
 
-The run detail page polls the API and shows:
-
-- live status, progress, processed PDF count, processing rate, and ETA while active
-- stream-style processing logs from `ProcessingLog`
-- only the documents and patients attached to the selected run
-- links from each processed result into the patient detail page
-
-The patient list is result-focused by default. It filters to patients with completed `FinalRecord` rows, so an imported folder with many PDFs does not appear as extracted output until those documents have actually been processed.
-
-Patient detail now includes a persistent left-side PDF preview under Source Records, plus a `Compare` tab. Both embed the source PDF through:
-
-```text
-/api/v1/documents/<document_id>/pdf/
+```bash
+cd evolet
+docker compose exec -T \
+  -e DOC_READER_SKIP_EXISTING=0 \
+  -e DOC_READER_ENABLE_HANDWRITING_ORDER_EXTRACTOR=1 \
+  -e DOC_READER_ENABLE_MEDOCR_REFERENCE_LAYER=1 \
+  -e DOC_READER_ENABLE_GROQ_VISION_OCR=1 \
+  -e DOC_READER_ENABLE_AUTO_SCHEMA=0 \
+  backend python manage.py run_pipeline \
+  --limit 1 \
+  --no-4bit \
+  --name "1 PDF handwriting extraction smoke"
 ```
 
-The PDF is streamed inline by Django and proxied through the Next.js app, so extracted fields, evidence quotes, validation flags, and the original source file can be reviewed side by side.
+Run a capped 3-PDF validation:
 
-The frontend visual style was also changed from the older dark slate theme to a bright sparkling white/sky-blue glass theme.
-
-### Chemotherapy dataset validation
-
-The chemotherapy folder was uploaded to the VM from:
-
-```text
-E:\doc_ocr\drive-download-chenmotherapy data
+```bash
+cd evolet
+docker compose exec -T \
+  -e DOC_READER_SKIP_EXISTING=0 \
+  -e DOC_READER_DOC_WORKERS=1 \
+  -e DOC_READER_MAX_WORKERS=4 \
+  -e DOC_READER_HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT=5 \
+  -e DOC_READER_HANDWRITING_ORDER_MAX_CROPS_PER_PAGE=8 \
+  backend python manage.py run_pipeline \
+  --limit 3 \
+  --no-4bit \
+  --name "3 PDF handwriting validation"
 ```
 
-VM paths:
+Check backend health:
 
-- uploaded archive: `/home/pardeep/chemotherapy_pdfs.tar.gz`
-- extracted data: `/home/pardeep/data/doc-reader-chemotherapy`
-- container mount: `/data/doc-reader-chemotherapy`
+```bash
+cd evolet
+docker compose exec -T backend python manage.py check
+docker stats --no-stream doc_reader_backend doc_reader_worker
+nvidia-smi
+```
 
-Import result:
+## Important Backend Files
 
-- PDFs found locally: 175
-- PDFs imported on VM: 175
-- skipped on import: 0
+- `evolet/pipeline/orchestrator.py`
+- `evolet/pipeline/services/layout_segmenter.py`
+- `evolet/pipeline/services/page_vision_sweep.py`
+- `evolet/pipeline/services/handwriting_order_extractor.py`
+- `evolet/pipeline/services/artifact_extractor.py`
+- `evolet/pipeline/services/medical_short_forms.py`
+- `evolet/pipeline/services/medocr_reference.py`
+- `evolet/pipeline/services/parsing/paddle_parser.py`
+- `evolet/pipeline/services/auto_schema.py`
+- `evolet/pipeline/services/validation.py`
+- `evolet/pipeline/api_views.py`
 
-Per request, the all-PDF run was stopped and superseded by a first-10-PDF validation run. The clean validation run is:
+## Known Limits
 
-- run ID: `f5429551-e07c-4745-93cf-319f8a9acf45`
-- name: `Chemotherapy 10 PDF validation run 2026-05-18 forced clean`
-- status: completed
-- processed PDFs: 10 / 10
-- final records shown: 10
-- run-linked mentions: 90
-- LLM fallback: completed with 2 / 2 LLM batches and 7 LLM mentions
-- 4-bit quantization: disabled for this validation run to avoid the bitsandbytes import path
+- Doctor handwriting is still probabilistic. The best current path is crop selection plus strict vision prompting plus medical normalization.
+- PaddleOCR PP-Structure may return zero artifacts for some PDFs; the pipeline still falls back to native text, page vision, and chart-region crops.
+- Groq quota can block final schema cleanup even when extraction has completed. The extracted artifacts and mentions are still saved.
+- The Paddle GPU packages were live-installed on the VM after rebuild during testing. For permanent deployment, bake the chosen Paddle GPU version into the Docker image.
+- `pkg_resources` emits a deprecation warning from SymSpell, but the dictionary loads and correction runs with `setuptools<81`.
 
-Runtime fixes applied during validation:
+## Repository
 
-- mounted `/home/pardeep/data` into the containers as `/data:ro`
-- fixed the worker entrypoint so `rqworker` starts correctly
-- switched the worker path to `rq.SimpleWorker` to avoid CUDA fork issues
-- tightened handwriting OCR routing so TrOCR/GOT do not run on every small native text block
-- added run telemetry fields in the API: elapsed seconds, processing rate, remaining PDFs, ETA seconds/text, and latest log timestamp
-- added run detail polling and live logs in the Next.js frontend
-- made `DOC_READER_SKIP_EXISTING=0` available for forced validation reruns while keeping skip-existing behavior on by default
-- wired `--no-4bit` into the actual LLM model loader
-- clamped generated LLM short fields before database insert so model prose cannot overflow fixed-length columns
+GitHub:
 
-Additional detection/validation run:
-
-- run ID: `62ba872e-de75-411c-bc2e-2c4abeb952dd`
-- name: `Chemotherapy 10 PDF YOLO validation run 2026-05-18`
-- status: completed
-- processed PDFs: 10 / 10
-- total mentions: 99
-- run-linked mentions: 93
-- YOLO layout artifacts: 183
-- final records shown: 10
-- LLM fallback: completed with 2 / 2 batches and 9 LLM mentions
-
-This run uses the optional `yolo_layout` parser backend with `Armaggheddon/yolo11-document-layout` and `yolo11n_doc_layout.pt` for DocLayNet-style page-region detection. It also writes a validation payload into `FinalRecord.stats.validation` and `FinalRecord.grouped_record.validation`. The default validation backend is heuristic for reliability; set `DOC_READER_VALIDATION_BACKEND=model` to attempt the configured MedGemma/Gemma validation model (`DOC_READER_VALIDATION_MODEL_ID`, default `google/medgemma-1.5-4b-it`) when model access and VRAM are available.
-
-LLM-first validation run:
-
-- run ID: `bb7238df-ef15-4dfc-a824-157f57714eb4`
-- name: `Chemotherapy 10 PDF LLM-first validation run 2026-05-18`
-- status: completed
-- processed PDFs: 10 / 10
-- final records shown: 10
-- mentions: 17
-- mention origin split: 17 LLM / 0 regex
-- schema: `3.0-adaptive`
-- validation fallback used: `Qwen/Qwen2.5-1.5B-Instruct`
-
-Follow-on 5-PDF run:
-
-- run ID: `6a59d9af-69e1-4d85-8306-2bf342b0a280`
-- name: `Next 5 PDF LLM-first side-by-side run 2026-05-18`
-- reached: extraction complete for 5 / 5 and LLM processing started
-- operational note: after launch, the VM stopped responding to SSH/HTTP at the application layer while ports stayed open, so it likely needs a full Stop/Start from Google Cloud Console before the final status can be verified.
-
-## Verified Status
-
-The advanced reader work added:
-
-- TrOCR backend
-- GOT-OCR backend
-- OCR backend interface
-- layout-aware artifact generation
-- relation extraction
-- queue launch helper
-- expanded database migration
-- evidence-aware frontend updates
-- Docker and VM runtime wiring
-- live run ETA and log monitoring
-- run-isolated result browsing for validation batches
-
-Known remaining hardening work:
-
-- add a hard concurrency/VRAM cap before launching more multi-PDF LLM validation batches
-- recover the VM with a full Stop/Start if it returns to the stuck SSH-banner state
-- switch backend serving from Django runserver to Gunicorn
-- install and benchmark optional `requirements-advanced.txt` parser packages on the GPU VM
-- add artifact crop previews and page overlays in the frontend
-- add API tests for patient detail, evidence artifacts, and relation graph responses
+```text
+https://github.com/martian3062/doc_ocr.git
+```

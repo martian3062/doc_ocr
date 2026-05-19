@@ -133,9 +133,21 @@ def api_dashboard(request):
                 if name.strip()
             ],
             "handwriting_model": config.TROCR_MODEL_ID,
+            "medical_handwriting_model": config.MEDICAL_HANDWRITING_MODEL_ID,
+            "medocr_reference_dataset": config.MEDOCR_VISION_DATASET_ID,
             "verification_model": config.GOT_OCR_MODEL_ID,
             "handwriting_ocr_enabled": config.ENABLE_HANDWRITING_OCR,
+            "medical_handwriting_ocr_enabled": config.ENABLE_MEDICAL_HANDWRITING_OCR,
+            "page_vision_sweep_enabled": config.ENABLE_PAGE_VISION_SWEEP,
+            "groq_vision_ocr_enabled": config.ENABLE_GROQ_VISION_OCR,
+            "handwriting_order_extractor_enabled": config.ENABLE_HANDWRITING_ORDER_EXTRACTOR,
+            "medocr_reference_layer_enabled": config.ENABLE_MEDOCR_REFERENCE_LAYER,
             "verification_enabled": config.ENABLE_GOT_VERIFICATION,
+            "auto_schema_enabled": config.ENABLE_AUTO_SCHEMA,
+            "schema_provider": config.SCHEMA_PROVIDER,
+            "schema_model": config.SCHEMA_MODEL,
+            "transformer_validation_enabled": config.ENABLE_TRANSFORMER_VALIDATION,
+            "medical_validation_required": config.REQUIRE_MEDICAL_VALIDATION,
         },
     }
     return JsonResponse(data)

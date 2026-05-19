@@ -9,6 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.10 python3.10-dev python3.10-distutils python3-pip \
         libglib2.0-0 libsm6 libxrender1 libxext6 libgl1-mesa-glx \
+        libgomp1 \
         poppler-utils ghostscript curl \
     && rm -rf /var/lib/apt/lists/*
 

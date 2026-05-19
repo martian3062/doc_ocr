@@ -19,8 +19,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         models = options["models"] or [
             config.TROCR_MODEL_ID,
+            config.MEDICAL_HANDWRITING_MODEL_ID,
             config.GOT_OCR_MODEL_ID,
+            config.VALIDATION_MODEL_ID,
         ]
+        models = [model for model in models if model]
 
         try:
             from huggingface_hub import HfApi
