@@ -164,6 +164,8 @@ DOC_READER_HANDWRITING_ORDER_MAX_CROPS_PER_PAGE=8
 DOC_READER_HANDWRITING_ORDER_RENDER_DPI=220
 DOC_READER_MEDICAL_HANDWRITING_MODEL_ID=espnet/iam_handwriting_ocr
 DOC_READER_MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS=Teklia/pylaia-iam,espnet/iam_handwriting_ocr,ismatsamadov/handwriting-recognition-iam,Riksarkivet/satrn_htr,Emeritus-21/Finetuned-full-HTR-model,DungHugging/vietocr-handwritten-finetune,Valerii02/ukr-htr-convtext
+DOC_READER_PYLAIA_DECODE_CTC=/tmp/pylaia-venv/bin/pylaia-htr-decode-ctc
+DOC_READER_ESPNET_PYTHON=/tmp/espnet-venv/bin/python
 
 DOC_READER_ENABLE_MULTIMODAL_MEDICINE_EXTRACTOR=1
 DOC_READER_MULTIMODAL_MEDICINE_BACKENDS=keracare,donut,phi3,dictionary
@@ -287,6 +289,31 @@ docker compose exec -T \
   --limit 3 \
   --no-4bit \
   --name "3 PDF handwriting validation"
+```
+
+Compare native handwriting recognizers on ten crop zones:
+
+```bash
+cd evolet
+docker compose exec -T backend python manage.py eval_handwriting_models \
+  --limit-crops 10 \
+  --model Teklia/pylaia-iam \
+  --model espnet/iam_handwriting_ocr \
+  --model ismatsamadov/handwriting-recognition-iam
+```
+
+`Teklia/pylaia-iam` and `espnet/iam_handwriting_ocr` should run from isolated venvs, not the main Django environment:
+
+```bash
+docker compose exec -T backend sh -lc '
+apt-get update &&
+apt-get install -y --no-install-recommends git build-essential python3.10-venv &&
+python -m venv /tmp/pylaia-venv &&
+/tmp/pylaia-venv/bin/pip install --no-cache-dir pylaia==1.1.2 &&
+python -m venv /tmp/espnet-venv &&
+/tmp/espnet-venv/bin/pip install --no-cache-dir wheel pillow &&
+/tmp/espnet-venv/bin/pip install --no-cache-dir espnet==202209 espnet_model_zoo==0.1.7 typeguard==2.13.3
+'
 ```
 
 Check backend health:

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +16,7 @@ import fitz
 import torch
 from torch import nn
 from django.core.management.base import BaseCommand, CommandError
+from PIL import Image
 
 from pipeline.models import DocumentArtifact, PDFDocument, PipelineRun
 from pipeline.services import config
@@ -208,7 +212,9 @@ def _load_recognizer(model_id: str, *, trust_remote_code: bool):
     if model_id == "ismatsamadov/handwriting-recognition-iam":
         return _load_ismatsamadov_crnn(model_id)
     if model_id == "Teklia/pylaia-iam":
-        raise RuntimeError("Teklia/pylaia-iam requires a PyLaia decoder runner; direct Transformers inference is not available")
+        return _load_teklia_pylaia(model_id)
+    if model_id == "espnet/iam_handwriting_ocr":
+        return _load_espnet_iam(model_id)
 
     if "trocr" in model_id.lower():
         try:
@@ -280,6 +286,159 @@ def _load_recognizer(model_id: str, *, trust_remote_code: bool):
     except Exception as exc:
         load_errors.append(f"pipeline: {str(exc)[:180]}")
     raise RuntimeError("; ".join(load_errors))
+
+
+def _load_teklia_pylaia(model_id: str):
+    from huggingface_hub import hf_hub_download
+
+    decode_bin = os.environ.get("DOC_READER_PYLAIA_DECODE_CTC", "/tmp/pylaia-venv/bin/pylaia-htr-decode-ctc")
+    if not Path(decode_bin).exists():
+        raise RuntimeError(
+            "PyLaia decoder not found. Create an isolated venv with pylaia==1.1.2 "
+            "or set DOC_READER_PYLAIA_DECODE_CTC to pylaia-htr-decode-ctc."
+        )
+
+    token = config.HF_TOKEN or None
+    weights_path = hf_hub_download(repo_id=model_id, filename="weights.ckpt", token=token)
+    model_path = hf_hub_download(repo_id=model_id, filename="model", token=token)
+    syms_path = hf_hub_download(repo_id=model_id, filename="syms.txt", token=token)
+
+    def _run(image, decode_bin=decode_bin, weights_path=weights_path, model_path=model_path, syms_path=syms_path):
+        with tempfile.TemporaryDirectory(prefix="pylaia-htr-") as tmp:
+            tmp_dir = Path(tmp)
+            image_path = tmp_dir / "crop.png"
+            list_path = tmp_dir / "images.txt"
+            _save_pylaia_image(image, image_path)
+            list_path.write_text(f"{image_path}\n", encoding="utf-8")
+            cmd = [
+                decode_bin,
+                "--logging.level",
+                "ERROR",
+                "--logging.to_stderr_level",
+                "ERROR",
+                "--common.checkpoint",
+                weights_path,
+                "--common.model_filename",
+                model_path,
+                syms_path,
+                str(list_path),
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            if proc.returncode != 0:
+                detail = (proc.stderr or proc.stdout or "").strip()
+                raise RuntimeError(detail[-500:] or f"PyLaia exited with status {proc.returncode}")
+            return _parse_pylaia_stdout(proc.stdout, image_path)
+
+    return _run
+
+
+def _save_pylaia_image(image, path: Path) -> None:
+    gray = image.convert("L")
+    width, height = gray.size
+    target_height = 128
+    target_width = max(1, int(width * target_height / max(1, height)))
+    gray.resize((target_width, target_height), Image.Resampling.LANCZOS).save(path)
+
+
+def _parse_pylaia_stdout(stdout: str, image_path: Path) -> str:
+    image_key = str(image_path)
+    for line in reversed(stdout.splitlines()):
+        cleaned = line.strip()
+        if not cleaned or cleaned.startswith(("GPU available", "TPU available", "IPU available", "HPU available")):
+            continue
+        if "Decoding:" in cleaned:
+            continue
+        if image_key in cleaned:
+            return cleaned.split(image_key, 1)[1].strip()
+        parts = cleaned.split(maxsplit=1)
+        if len(parts) == 2 and parts[0].lower().endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff")):
+            return parts[1].strip()
+    return ""
+
+
+def _load_espnet_iam(model_id: str):
+    espnet_python = os.environ.get("DOC_READER_ESPNET_PYTHON", "/tmp/espnet-venv/bin/python")
+    if not Path(espnet_python).exists():
+        raise RuntimeError(
+            "ESPnet runtime not found. Create an isolated venv with espnet==202209 and espnet_model_zoo==0.1.7 "
+            "or set DOC_READER_ESPNET_PYTHON."
+        )
+
+    def _run(image, espnet_python=espnet_python):
+        import numpy as np
+
+        with tempfile.TemporaryDirectory(prefix="espnet-htr-") as tmp:
+            tmp_dir = Path(tmp)
+            feature_path = tmp_dir / "features.npy"
+            np.save(feature_path, _image_to_espnet_features(image))
+            script_path = tmp_dir / "decode_espnet.py"
+            script_path.write_text(_ESPNET_DECODE_SCRIPT, encoding="utf-8")
+            env = dict(os.environ)
+            env.setdefault("MPLBACKEND", "Agg")
+            proc = subprocess.run(
+                [espnet_python, str(script_path), str(feature_path), model_id],
+                capture_output=True,
+                text=True,
+                timeout=240,
+                env=env,
+            )
+            if proc.returncode != 0:
+                detail = (proc.stderr or proc.stdout or "").strip()
+                raise RuntimeError(detail[-500:] or f"ESPnet exited with status {proc.returncode}")
+            return _parse_espnet_stdout(proc.stdout)
+
+    return _run
+
+
+def _image_to_espnet_features(image):
+    import numpy as np
+
+    gray = image.convert("L")
+    width, height = gray.size
+    target_height = 100
+    target_width = max(1, int(width * target_height / max(1, height)))
+    resized = gray.resize((target_width, target_height), Image.Resampling.LANCZOS)
+    arr = np.asarray(resized, dtype=np.float32) / 255.0
+    return arr.T.astype(np.float32)
+
+
+def _parse_espnet_stdout(stdout: str) -> str:
+    for line in reversed(stdout.splitlines()):
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        try:
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError:
+            continue
+        return str(payload.get("text") or "").strip()
+    return ""
+
+
+_ESPNET_DECODE_SCRIPT = r"""
+import json
+import os
+import sys
+
+import numpy as np
+from espnet_model_zoo.downloader import ModelDownloader
+from espnet2.bin.asr_inference import Speech2Text
+
+feature_path = sys.argv[1]
+model_id = sys.argv[2]
+info = ModelDownloader().download_and_unpack(model_id)
+speech2text = Speech2Text(
+    asr_train_config=info["asr_train_config"],
+    asr_model_file=info["asr_model_file"],
+    device=os.environ.get("DOC_READER_ESPNET_DEVICE", "cpu"),
+    beam_size=int(os.environ.get("DOC_READER_ESPNET_BEAM_SIZE", "10")),
+    ctc_weight=float(os.environ.get("DOC_READER_ESPNET_CTC_WEIGHT", "0.3")),
+    nbest=1,
+)
+result = speech2text(np.load(feature_path))
+text = result[0][0] if result else ""
+print(json.dumps({"text": text or ""}))
+"""
 
 
 class CharacterMapper:
