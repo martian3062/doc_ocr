@@ -31,6 +31,7 @@ This module owns everything GPU-related for the extraction phase:
 import json
 import time
 import logging
+import threading
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -56,6 +57,7 @@ GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 _model     = None
 _tokenizer = None
 _model_id  = None
+_MODEL_LOCK = threading.RLock()
 
 # Ordered bucket names used for sorting and index lookup
 _BUCKET_ORDER = ["short", "medium", "long", "xlong"]
@@ -342,6 +344,14 @@ def _generate_batch(
     if config.LLM_PROVIDER == "groq":
         return _generate_batch_groq(prompts, max_new_tokens=max_new_tokens)
 
+    return _generate_batch_local(prompts, max_new_tokens=max_new_tokens)
+
+
+def _generate_batch_local(
+    prompts: List[str],
+    max_new_tokens: int = config.MAX_NEW_TOKENS,
+) -> List[str]:
+    """Run a batched generation pass on the loaded local HF model."""
     if _tokenizer is None or _model is None:
         raise RuntimeError("Model not loaded — call load_model() before inference.")
 
@@ -394,6 +404,24 @@ def _generate_batch(
         new_tokens = outputs[i][prompt_len:]
         decoded.append(_tokenizer.decode(new_tokens, skip_special_tokens=True).strip())
     return decoded
+
+
+def generate_local_prompts(
+    prompts: List[str],
+    *,
+    model_id: str | None = None,
+    max_new_tokens: int = config.MAX_NEW_TOKENS,
+    use_4bit: Optional[bool] = None,
+    unload_after: bool = False,
+) -> List[str]:
+    """Generate with a local HF model even when the main provider is Groq."""
+    with _MODEL_LOCK:
+        load_model(model_id=model_id or config.MODEL_ID, use_4bit=use_4bit)
+        try:
+            return _generate_batch_local(prompts, max_new_tokens=max_new_tokens)
+        finally:
+            if unload_after:
+                unload_model()
 
 
 def _generate_batch_groq(

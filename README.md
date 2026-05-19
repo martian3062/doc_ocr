@@ -21,7 +21,7 @@ The latest VM deployment uses a safe hybrid stack:
 - dedicated handwriting order extraction for doctor-written medicine/vital regions
 - medical short-form normalization before schema extraction
 - MedOCR reference layer using `naazimsnh02/medocr-vision-dataset` as prompt/evaluation context
-- Groq text/schema models for adaptive extraction when quota is available
+- Groq text/schema models for adaptive extraction when quota is available, or local Qwen 2.5 7B when Groq quota is blocked
 - heuristic validation by default, with local HF validation disabled unless explicitly enabled
 
 Recent verified VM runs:
@@ -112,9 +112,13 @@ Default safe VM mode:
 
 Optional local/HF models remain supported:
 
+- `Qwen/Qwen2.5-7B-Instruct`
 - `Qwen/Qwen2.5-1.5B-Instruct`
 - `google/medgemma-1.5-4b-it`
 - `microsoft/trocr-large-handwritten`
+- `espnet/iam_handwriting_ocr`
+- `Riksarkivet/satrn_htr`
+- `Emeritus-21/Finetuned-full-HTR-model`
 - `stepfun-ai/GOT-OCR-2.0-hf`
 - `Armaggheddon/yolo11-document-layout`
 
@@ -135,6 +139,15 @@ DOC_READER_GROQ_EXTRACTION_MODEL=llama-3.3-70b-versatile
 DOC_READER_SCHEMA_PROVIDER=groq
 DOC_READER_SCHEMA_MODEL=llama-3.3-70b-versatile
 
+# Local Groq-style text/schema fallback
+DOC_READER_LLM_PROVIDER=local
+DOC_READER_ENABLE_LOCAL_HF_LLM=1
+DOC_READER_MODEL_ID=Qwen/Qwen2.5-7B-Instruct
+DOC_READER_USE_4BIT=0
+DOC_READER_SCHEMA_PROVIDER=local
+DOC_READER_SCHEMA_LOCAL_MODEL_ID=Qwen/Qwen2.5-7B-Instruct
+DOC_READER_SCHEMA_LOCAL_USE_4BIT=0
+
 DOC_READER_ENABLE_GROQ_VISION_OCR=1
 DOC_READER_GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 DOC_READER_ENABLE_PAGE_VISION_SWEEP=1
@@ -145,12 +158,16 @@ DOC_READER_ENABLE_HANDWRITING_ORDER_EXTRACTOR=1
 DOC_READER_HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT=5
 DOC_READER_HANDWRITING_ORDER_MAX_CROPS_PER_PAGE=8
 DOC_READER_HANDWRITING_ORDER_RENDER_DPI=220
+DOC_READER_MEDICAL_HANDWRITING_MODEL_ID=espnet/iam_handwriting_ocr
+DOC_READER_MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS=espnet/iam_handwriting_ocr,Riksarkivet/satrn_htr,Emeritus-21/Finetuned-full-HTR-model
 
 DOC_READER_ENABLE_MULTIMODAL_MEDICINE_EXTRACTOR=1
 DOC_READER_MULTIMODAL_MEDICINE_BACKENDS=keracare,donut,phi3,dictionary
 DOC_READER_KERACARE_MEDICINE_MODEL_ID=KeraCare/keras-dots-ocr-finetuned-v1
 DOC_READER_DONUT_PRESCRIPTION_MODEL_ID=chinmays18/medical-prescription-ocr
 DOC_READER_PHI3_PRESCRIPTION_MODEL_ID=Muizzzz8/phi3-prescription-reader
+DOC_READER_MULTIMODAL_MEDICINE_IMAGE_MAX_SIDE=960
+DOC_READER_MULTIMODAL_MEDICINE_MAX_LOCAL_HF_CROPS_PER_PROCESS=2
 
 DOC_READER_ENABLE_MEDOCR_REFERENCE_LAYER=1
 DOC_READER_MEDOCR_VISION_DATASET_ID=naazimsnh02/medocr-vision-dataset
@@ -296,6 +313,7 @@ nvidia-smi
 
 - Doctor handwriting is still probabilistic. The best current path is crop selection plus Groq vision plus KeraCare/Donut/Phi3/dictionary medicine-name reconciliation.
 - `KeraCare/keras-dots-ocr-finetuned-v1` requires `transformers==4.51.3`, `qwen-vl-utils`, `trust_remote_code`, and GPU memory headroom.
+- Local HF vision calls are capped by `DOC_READER_MULTIMODAL_MEDICINE_MAX_LOCAL_HF_CROPS_PER_PROCESS` so real multi-page PDFs cannot restart the backend; Groq/context/dictionary reconciliation still runs on every crop.
 - `Muizzzz8/phi3-prescription-reader` is wired as a best-effort interpreter; it may fail gracefully in some runtime combinations.
 - PaddleOCR PP-Structure may return zero artifacts for some PDFs; the pipeline still falls back to native text, page vision, and chart-region crops.
 - Groq quota can block final schema cleanup even when extraction has completed. The extracted artifacts and mentions are still saved.

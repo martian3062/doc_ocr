@@ -32,6 +32,7 @@ import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from .medical_short_forms import DRUG_TERMS, normalize_order_text
 from .pdf_extractor import normalize_text, word_count
 from .note_segmenter import extract_dates
 
@@ -74,14 +75,15 @@ _IMAGING_PATTERNS: List[Tuple[re.Pattern, str]] = [
 # ── Medications ──────────────────────────────────────────────────────────────
 # Pattern 1: generic "Tab X …" or "T. X …" format
 _MED_TAB_RE = re.compile(
-    r"((tab|t\.)\s*[A-Z][A-Za-z0-9.+-]*(?:\s+[A-Za-z0-9.+-]+){0,4}"
+    r"((tab\.?|t\.)\s*[A-Z][A-Za-z0-9.+-]*(?:\s+[A-Za-z0-9.+-]+){0,4}"
     r"\s*(?:\d+(?:\.\d+)?)?\s*(?:mg|mcg|gm)?[^\n]*)",
     re.I,
 )
 # Pattern 2: known drug names (searched on lowercase text)
 _KNOWN_DRUGS: List[str] = [
     "sunitinib", "everolimus", "pazopanib",
-    "nivolumab", "cabozantinib", "chemotherapy",
+    "nivolumab", "cabozantinib",
+    *DRUG_TERMS,
 ]
 
 # ── Symptoms ─────────────────────────────────────────────────────────────────
@@ -255,8 +257,19 @@ def extract_note_mentions(note: Dict[str, Any]) -> List[Dict[str, Any]]:
     # ── Medications (Tab / T. prefix) ────────────────────────────────────────
     for m in _MED_TAB_RE.finditer(text):
         val = normalize_text(m.group(1))
-        if len(val) >= 5:   # filter out single-character noise
-            _add_mention(mentions, note, "medication", "medication", val, evidence_quote=val)
+        normalized = normalize_order_text(val)
+        has_drug = bool(normalized.get("drug_candidates"))
+        has_dose = bool(normalized.get("dose"))
+        has_tab = bool(re.match(r"\s*tab\.?\b", val, flags=re.I))
+        if len(val) >= 5 and (has_drug or has_dose or has_tab):
+            _add_mention(
+                mentions,
+                note,
+                "medication",
+                "medication",
+                normalized.get("expanded_text") or val,
+                evidence_quote=val,
+            )
 
     # ── Medications (known drug names) ───────────────────────────────────────
     for drug in _KNOWN_DRUGS:

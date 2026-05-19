@@ -260,7 +260,8 @@ def _parse_medication(mention: Dict[str, Any]) -> Dict[str, Any]:
     → drug_name="Sunitinib", dose="50mg", frequency="Once daily",
       route="oral", duration="4 weeks"
     """
-    val = mention.get("value", "")
+    attrs = mention.get("attributes") or {}
+    val = attrs.get("full_order_text") or attrs.get("display_text") or mention.get("value", "")
     low = val.lower()
 
     # Drug name: word after "tab" / "t." / "cap" / "inj" prefixes
@@ -300,18 +301,35 @@ def _parse_medication(mention: Dict[str, Any]) -> Dict[str, Any]:
     if m:
         duration = m.group(1)
 
-    return {
-        "drug_name":  drug_name,
-        "dose":       dose,
-        "frequency":  frequency,
-        "route":      route,
-        "duration":   duration,
-        "raw_value":  val,
-        "date_text":  mention.get("date_text", ""),
-        "certainty":  mention.get("certainty"),
+    parsed = {
+        "drug_name": attrs.get("drug_name") or drug_name,
+        "dose": attrs.get("dose") or dose,
+        "frequency": attrs.get("frequency_or_time") or frequency,
+        "route": attrs.get("route") or route,
+        "fluid": attrs.get("fluid") or None,
+        "instruction": attrs.get("instruction") or None,
+        "duration": duration,
+        "full_order_text": val,
+        "raw_order_text": attrs.get("raw_order_text") or mention.get("evidence_quote", "") or val,
+        "raw_value": val,
+        "date_text": mention.get("date_text", ""),
+        "certainty": mention.get("certainty"),
         "source_pages": mention.get("source_pages", []),
         "evidence_quote": mention.get("evidence_quote", ""),
     }
+    if attrs:
+        parsed["short_forms"] = attrs.get("short_forms", [])
+        parsed["drug_candidates"] = attrs.get("drug_candidates", [])
+        parsed["structured_order"] = {
+            "full_order_text": parsed["full_order_text"],
+            "drug_name": parsed["drug_name"],
+            "dose": parsed["dose"],
+            "route": parsed["route"],
+            "fluid": parsed["fluid"],
+            "frequency_or_time": parsed["frequency"],
+            "instruction": parsed["instruction"],
+        }
+    return parsed
 
 
 def _parse_imaging(mention: Dict[str, Any]) -> Dict[str, Any]:

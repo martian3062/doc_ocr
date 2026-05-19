@@ -10,7 +10,7 @@ It combines:
 
 from __future__ import annotations
 
-import json
+import gc
 import logging
 import re
 import tempfile
@@ -28,6 +28,7 @@ from .pdf_extractor import normalize_text
 logger = logging.getLogger("pipeline")
 
 _MODEL_CACHE: Dict[str, Any] = {}
+_LOCAL_HF_CROP_CALLS = 0
 
 
 @dataclass
@@ -61,9 +62,11 @@ def extract_multimodal_medicines(image: Image.Image, *, context_text: str = "") 
         try:
             result = reader(image, context_text=context_text)
         except Exception as exc:
-            _release_cuda()
+            _release_runtime_memory()
             logger.info("Medicine ensemble reader %s skipped: %s", reader.__name__, exc)
             result = {"source": reader.__name__, "status": "failed", "error": str(exc)[:300], "text": "", "drug_names": []}
+        finally:
+            _release_runtime_memory()
         sources.append(result)
         candidates.extend(_candidates_from_result(result))
 
@@ -127,6 +130,10 @@ def _run_keracare_reader(image: Image.Image, *, context_text: str) -> Dict[str, 
         return {"source": "keracare", "status": "disabled", "drug_names": [], "text": ""}
     if not config.ENABLE_LOCAL_HF_VISION_MODELS:
         return {"source": "keracare", "status": "local_hf_vision_disabled", "drug_names": [], "text": ""}
+    if not _has_medicine_context_signal(context_text):
+        return {"source": "keracare", "status": "no_medicine_context_signal", "drug_names": [], "text": ""}
+    if not _reserve_local_hf_crop():
+        return {"source": "keracare", "status": "local_hf_crop_budget_exhausted", "drug_names": [], "text": ""}
 
     torch = _import_torch()
     AutoModelForCausalLM, AutoProcessor = _import_auto_causal_and_processor()
@@ -199,6 +206,10 @@ def _run_donut_reader(image: Image.Image, *, context_text: str) -> Dict[str, Any
         return {"source": "donut", "status": "disabled", "drug_names": [], "text": ""}
     if not config.ENABLE_LOCAL_HF_VISION_MODELS:
         return {"source": "donut", "status": "local_hf_vision_disabled", "drug_names": [], "text": ""}
+    if not _has_medicine_context_signal(context_text):
+        return {"source": "donut", "status": "no_medicine_context_signal", "drug_names": [], "text": ""}
+    if not _reserve_local_hf_crop():
+        return {"source": "donut", "status": "local_hf_crop_budget_exhausted", "drug_names": [], "text": ""}
 
     torch = _import_torch()
     from transformers import DonutProcessor, VisionEncoderDecoderModel
@@ -279,7 +290,6 @@ def _candidates_from_result(result: Dict[str, Any]) -> List[MedicineCandidate]:
     text = normalize_text(result.get("text") or "")
     if text:
         candidates.extend(_dictionary_candidates(text, source, base_score=82))
-        candidates.extend(_raw_prescription_candidates(text, source))
     return candidates
 
 
@@ -301,31 +311,6 @@ def _dictionary_candidates(text: str, source: str, *, base_score: int = 88) -> L
     return out
 
 
-def _raw_prescription_candidates(text: str, source: str) -> List[MedicineCandidate]:
-    if source not in {"keracare", "donut"}:
-        return []
-    out: List[MedicineCandidate] = []
-    stop = {
-        "name", "patient", "address", "date", "time", "disease", "diagnosis", "doctor",
-        "staff", "nurse", "drugs", "table", "body", "html", "thead", "tbody", "formula",
-        "brand", "will", "initial", "medicines", "injections", "administered", "male",
-        "female", "room", "ward", "bed", "sex", "age",
-    }
-    for raw_line in re.split(r"[\n<>]+", text):
-        line = normalize_text(raw_line)
-        lowered = line.lower()
-        if not re.search(r"\b(?:inj|iv|mg|mcg|gm?|ml|tab|cap|drug)\b", lowered):
-            continue
-        for token in re.findall(r"\b[A-Za-z][A-Za-z/-]{3,24}\b", line):
-            clean = token.strip("/-").lower()
-            if clean in stop or clean.endswith("ml") or clean.endswith("mg"):
-                continue
-            if any(ch.isdigit() for ch in clean):
-                continue
-            out.append(MedicineCandidate(raw=token, normalized=clean, score=83, source=source, evidence=line[:300]))
-    return out[:8]
-
-
 def _merge_candidates(candidates: Iterable[MedicineCandidate]) -> List[MedicineCandidate]:
     merged: Dict[str, MedicineCandidate] = {}
     votes: Dict[str, int] = {}
@@ -340,6 +325,11 @@ def _merge_candidates(candidates: Iterable[MedicineCandidate]) -> List[MedicineC
         if current is not None:
             current_has_dose = bool(_nearby_dose(current))
             candidate_has_dose = bool(_nearby_dose(candidate))
+            if candidate_has_dose and current_has_dose and candidate.source == "context_dictionary":
+                candidate.score = max(candidate.score, current.score)
+                candidate.source = f"{current.source}+{candidate.source}" if current.source != candidate.source else candidate.source
+                merged[key] = candidate
+                continue
             if candidate_has_dose and not current_has_dose:
                 candidate.score = max(candidate.score, current.score)
                 candidate.source = f"{current.source}+{candidate.source}" if current.source != candidate.source else candidate.source
@@ -377,7 +367,26 @@ def _bounded_hf_image(image: Image.Image) -> Image.Image:
     return bounded
 
 
-def _release_cuda() -> None:
+def _has_medicine_context_signal(text: str) -> bool:
+    lowered = normalize_text(text).lower()
+    if find_drug_candidates(lowered, limit=1):
+        return True
+    return bool(re.search(r"\b(?:inj|injection|tab|cap|drug|medicine|medication|chemo|saline|ns|dns|rl|iv|i/v|mg|mcg|gm?|ml)\b", lowered))
+
+
+def _reserve_local_hf_crop() -> bool:
+    global _LOCAL_HF_CROP_CALLS
+    limit = max(0, config.MULTIMODAL_MEDICINE_MAX_LOCAL_HF_CROPS_PER_PROCESS)
+    if limit == 0:
+        return False
+    if _LOCAL_HF_CROP_CALLS >= limit:
+        return False
+    _LOCAL_HF_CROP_CALLS += 1
+    return True
+
+
+def _release_runtime_memory() -> None:
+    gc.collect()
     try:
         import torch
 

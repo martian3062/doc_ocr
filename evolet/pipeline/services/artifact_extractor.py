@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Iterable, List
 
-from .medical_short_forms import normalize_order_text
+from .medical_short_forms import find_drug_candidates, normalize_order_text
 from .pdf_extractor import normalize_text
 
 
@@ -40,13 +40,20 @@ MEDICATION_HINTS = [
     "trastuzumab", "docetaxel", "palon", "palono", "palonosetron", "pan", "pantoprazole",
     "dexamethasone", "ondansetron", "paclitaxel", "carboplatin", "cisplatin", "doxorubicin",
     "cyclophosphamide", "fluorouracil", "5fu", "bevacizumab", "rituximab", "nivolumab",
+    "oxaliplatin", "irinotecan", "capecitabine", "gemcitabine", "hetronifly",
 ]
 
 MED_LINE_RE = re.compile(
-    r"(?P<prefix>(?:\d+\s*ml|inj\.?|iv|tab\.?|cap\.?)?[^\n]{0,30})"
+    r"(?P<prefix>(?:\d+\s*ml|inj\.?|lnj|1\s*nj|iv|i/v|tab\.?|cap\.?)?[^\n]{0,30})"
     r"(?P<drug>trastuzumab|docetaxel|palon[a-z]*|pan\b|pantop[a-z]*|pantoprazole|paclitaxel|carboplatin|cisplatin|"
-    r"doxorubicin|cyclophosphamide|ondansetron|dexamethasone|bevacizumab|rituximab|nivolumab)"
+    r"doxorubicin|cyclophosphamide|ondansetron|dexamethasone|bevacizumab|rituximab|nivolumab|oxaliplatin|"
+    r"irinotecan|capecitabine|gemcitabine|hetron[a-z]*)"
     r"(?P<tail>[^\n]{0,90})",
+    re.I,
+)
+
+ORDER_SIGNAL_RE = re.compile(
+    r"\b(?:inj|lnj|1\s*nj|iv|i/v|i\.v\.?|tab|cap|mg|mcg|gm?|ml|ns|n/s|saline|stat|od|bd|tds|cycle)\b",
     re.I,
 )
 
@@ -114,6 +121,9 @@ def _extract_medications(out, seen, artifact, text: str) -> None:
             "frequency_or_time": item.get("frequency") or item.get("duration", ""),
             "fluid": item.get("fluid") or item.get("volume", ""),
             "instruction": item.get("instruction", ""),
+            "full_order_text": raw,
+            "display_text": raw,
+            "raw_order_text": _clean_value(item.get("raw_text") or raw),
             "short_forms": item.get("short_forms", []),
             "drug_candidates": drug_candidates,
         }
@@ -150,9 +160,21 @@ def _extract_medications(out, seen, artifact, text: str) -> None:
     if artifact.get("backend") == "groq_handwriting_order" and metadata.get("order_items"):
         return
 
-    lines = [line.strip() for line in re.split(r"[\n|]+", text) if line.strip()]
+    lines = _split_orderish_lines(text)
     if not lines and any(hint in text.lower() for hint in MEDICATION_HINTS):
         lines = [text]
+    for line in _reconstructed_order_lines(lines):
+        normalized = normalize_order_text(line)
+        drug_candidates = normalized.get("drug_candidates", [])
+        has_order_signal = bool(ORDER_SIGNAL_RE.search(normalized.get("raw_text", "")))
+        if not (drug_candidates or (has_order_signal and normalized.get("dose"))):
+            continue
+        normalized_drug = drug_candidates[0]["normalized"] if drug_candidates else ""
+        attrs = _med_attrs(normalized, normalized_drug)
+        label = "medication_order" if normalized_drug else "medication_order_uncertain"
+        value = _trim_order_tail(normalized.get("expanded_text") or normalized.get("raw_text") or line)
+        _add(out, seen, artifact, "medication", label, value, line, attributes=attrs, normalized_value=normalized_drug or value)
+
     for line in lines:
         for match in MED_LINE_RE.finditer(line):
             raw = _clean_value(match.group(0))
@@ -160,16 +182,79 @@ def _extract_medications(out, seen, artifact, text: str) -> None:
             normalized = normalize_order_text(raw)
             drug_candidates = normalized.get("drug_candidates", [])
             normalized_drug = drug_candidates[0]["normalized"] if drug_candidates else drug
-            attrs = {
-                "drug_name": normalized_drug,
-                "route": _find_first(r"\b(iv|i/v|inj\.?|tab\.?|cap\.?)\b", raw),
-                "dose": _find_first(r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|gm|ml)\b", raw),
-                "frequency_or_time": _find_first(r"\b(?:\d+\s*hrs?|stat|od|bd|tds|q[0-9]+h)\b", raw),
-                "expanded_text": normalized.get("expanded_text", ""),
-                "short_forms": normalized.get("short_forms", []),
-                "drug_candidates": drug_candidates,
-            }
-            _add(out, seen, artifact, "medication", "medication_order", raw, line, attributes=attrs, normalized_value=normalized_drug or raw)
+            attrs = _med_attrs(normalized, normalized_drug)
+            _add(out, seen, artifact, "medication", "medication_order", _trim_order_tail(raw), line, attributes=attrs, normalized_value=normalized_drug or raw)
+
+
+def _reconstructed_order_lines(lines: List[str]) -> List[str]:
+    out: List[str] = []
+    for index, line in enumerate(lines):
+        candidates = find_drug_candidates(line, limit=1)
+        if candidates:
+            out.append(_clean_value(line)[:220])
+            continue
+        if not ORDER_SIGNAL_RE.search(line):
+            continue
+        window_parts = [line]
+        for next_line in lines[index + 1 : min(len(lines), index + 5)]:
+            window_parts.append(next_line)
+            if find_drug_candidates(" ".join(window_parts), limit=1):
+                break
+        window = " ".join(window_parts)
+        window = _clean_value(window)
+        if len(window) < 4:
+            continue
+        out.append(window[:220])
+    return out
+
+
+def _split_orderish_lines(text: str) -> List[str]:
+    raw_lines = [line.strip() for line in re.split(r"[\n|]+", text) if line.strip()]
+    if len(raw_lines) > 1:
+        return raw_lines
+    compact = normalize_text(text)
+    markers = re.compile(
+        r"(?=\b(?:inj|lnj|1\s*nj|tab|cap|ns|n/s|\d+\s*ml|[A-Za-z]{4,}\s+\d+(?:\.\d+)?\s*(?:mg|mcg|gm?))\b)",
+        re.I,
+    )
+    pieces = [piece.strip() for piece in markers.split(compact) if piece.strip()]
+    if len(pieces) > 1:
+        return pieces
+    windows: List[str] = []
+    for match in MED_LINE_RE.finditer(compact):
+        start = max(0, match.start() - 25)
+        end = min(len(compact), match.end() + 35)
+        windows.append(_clean_value(compact[start:end]))
+    return windows or raw_lines
+
+
+def _med_attrs(normalized: Dict[str, Any], normalized_drug: str) -> Dict[str, Any]:
+    expanded = _trim_order_tail(normalized.get("expanded_text") or normalized.get("raw_text") or "")
+    return {
+        "drug_name": normalized_drug,
+        "route": normalized.get("route", ""),
+        "dose": normalized.get("dose", ""),
+        "frequency_or_time": normalized.get("frequency", ""),
+        "fluid": normalized.get("volume", ""),
+        "instruction": normalized.get("instruction", ""),
+        "full_order_text": expanded,
+        "display_text": expanded,
+        "raw_order_text": _clean_value(normalized.get("raw_text", "")),
+        "expanded_text": normalized.get("expanded_text", ""),
+        "short_forms": normalized.get("short_forms", []),
+        "drug_candidates": normalized.get("drug_candidates", []),
+    }
+
+
+def _trim_order_tail(value: str) -> str:
+    text = _clean_value(value)
+    text = re.split(
+        r"\b(?:diet and external treatment|signature|consultant|regd\.?\s*no|valentis cancer|hospital pvt|t\.\s*ltd|meerut)\b",
+        text,
+        maxsplit=1,
+        flags=re.I,
+    )[0]
+    return _clean_value(text)
 
 
 def _add(
@@ -186,7 +271,17 @@ def _add(
     value = _clean_value(value)
     if not value:
         return
-    key = (category.lower(), label.lower(), value.lower(), int(artifact.get("page_num") or 0))
+    if category == "medication" and attributes:
+        key = (
+            category.lower(),
+            label.lower(),
+            str(attributes.get("drug_name") or normalized_value or value).lower(),
+            str(attributes.get("dose") or "").lower(),
+            str(attributes.get("route") or "").lower(),
+            int(artifact.get("page_num") or 0),
+        )
+    else:
+        key = (category.lower(), label.lower(), value.lower(), int(artifact.get("page_num") or 0))
     if key in seen:
         return
     seen.add(key)

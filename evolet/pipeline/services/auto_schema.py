@@ -52,13 +52,20 @@ def enrich_with_auto_schema(
         fallback["quality_checks"]["auto_schema"]["status"] = "disabled"
         return fallback
 
-    if config.SCHEMA_PROVIDER != "groq":
+    if config.SCHEMA_PROVIDER not in {"groq", "local"}:
         fallback["quality_checks"]["auto_schema"]["status"] = "unsupported_provider"
         fallback["quality_checks"]["auto_schema"]["error"] = config.SCHEMA_PROVIDER
         return fallback
 
-    if not config.GROQ_API_KEY:
+    if config.SCHEMA_PROVIDER == "groq" and not config.GROQ_API_KEY:
         fallback["quality_checks"]["auto_schema"]["status"] = "missing_key"
+        return fallback
+    if config.SCHEMA_PROVIDER == "local" and not config.ENABLE_LOCAL_HF_LLM:
+        fallback["quality_checks"]["auto_schema"]["status"] = "local_hf_llm_disabled"
+        return fallback
+    if config.SCHEMA_PROVIDER == "local" and not mentions:
+        fallback["quality_checks"]["auto_schema"]["status"] = "skipped_empty_record"
+        fallback["quality_checks"]["auto_schema"]["error"] = "no mentions available for local schema"
         return fallback
 
     try:
@@ -69,7 +76,7 @@ def enrich_with_auto_schema(
             mentions=mentions,
             base_sections=base_schema.get("sections", {}),
         )
-        response_text = _call_groq(prompt)
+        response_text = _call_schema_provider(prompt)
         payload = parse_json_loose(response_text)
         if not isinstance(payload, dict):
             raise ValueError("auto-schema response was not a JSON object")
@@ -174,6 +181,29 @@ def _call_groq(prompt: str) -> str:
     raise RuntimeError(last_error or "Groq request failed")
 
 
+def _call_schema_provider(prompt: str) -> str:
+    if config.SCHEMA_PROVIDER == "local":
+        return _call_local(prompt)
+    return _call_groq(prompt)
+
+
+def _call_local(prompt: str) -> str:
+    from .llm_engine import generate_local_prompts
+
+    outputs = generate_local_prompts(
+        [prompt],
+        model_id=config.SCHEMA_LOCAL_MODEL_ID,
+        max_new_tokens=config.SCHEMA_MAX_NEW_TOKENS,
+        use_4bit=config.SCHEMA_LOCAL_USE_4BIT,
+        unload_after=False,
+    )
+    return outputs[0] if outputs else ""
+
+
+def _schema_model_label() -> str:
+    return config.SCHEMA_LOCAL_MODEL_ID if config.SCHEMA_PROVIDER == "local" else config.SCHEMA_MODEL
+
+
 def _post_groq(body: Dict[str, Any]) -> Dict[str, Any]:
     req = Request(
         GROQ_CHAT_URL,
@@ -265,7 +295,7 @@ def _fallback_schema(
         },
             "auto_schema": {
                 "provider": config.SCHEMA_PROVIDER,
-                "model": config.SCHEMA_MODEL,
+                "model": _schema_model_label(),
                 "reference_dataset": config.MEDOCR_VISION_DATASET_ID,
                 "status": status,
                 "error": error,
@@ -381,7 +411,7 @@ def _merge_provider_payload(
         "spell_check": spell_check,
         "auto_schema": {
             "provider": config.SCHEMA_PROVIDER,
-            "model": config.SCHEMA_MODEL,
+            "model": _schema_model_label(),
             "reference_dataset": config.MEDOCR_VISION_DATASET_ID,
             "status": "completed",
             "error": "",
