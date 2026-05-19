@@ -25,13 +25,14 @@ pillow>=10.4                # Lightweight PDF/image utility used lazily
 
 # ── LLM / GPU Inference ─────────────────────────────────────
 # torch is installed separately in Dockerfile from CUDA wheel index
-transformers>=4.44          # HuggingFace transformers
+transformers==4.51.3        # HuggingFace transformers; KeraCare/Dots OCR expects this version
 accelerate>=0.34            # Multi-GPU support
 bitsandbytes>=0.43          # 4-bit quantization
 safetensors>=0.4            # Safe model serialization
 huggingface_hub>=0.25       # Model download utilities
 sentencepiece>=0.2
 protobuf>=5.28
+qwen-vl-utils>=0.0.10      # KeraCare/Dots OCR prescription image helper
 
 # ── Data & Utilities ────────────────────────────────────────
 pandas>=2.2                 # Data manipulation

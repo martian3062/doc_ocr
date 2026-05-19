@@ -19,6 +19,7 @@ from . import config
 from .json_utils import parse_json_loose
 from .medical_short_forms import normalize_order_text, normalize_orders
 from .medocr_reference import get_medocr_reference_context
+from .multimodal_medicine_extractor import extract_multimodal_medicines
 from .pdf_extractor import normalize_text
 
 logger = logging.getLogger("pipeline")
@@ -51,6 +52,19 @@ def extract_handwriting_order_artifacts(pdf_path: str, artifacts: List[Dict[str,
                         continue
                     prepared = _prepare_crop(crop)
                     result = _groq_read_order_crop(prepared, role=role, page_num=page_num, reference=reference)
+                    multimodal = extract_multimodal_medicines(
+                        prepared,
+                        context_text="\n".join(
+                            filter(None, [
+                                normalize_text(result.get("raw_text") or result.get("text") or ""),
+                                str(source.get("source_text") or ""),
+                            ])
+                        ),
+                    )
+                    if multimodal.get("order_items"):
+                        result.setdefault("medication_orders", [])
+                        result["medication_orders"].extend(multimodal["order_items"])
+                    result["multimodal_medicine"] = multimodal
                     artifact = _artifact_from_result(result, bbox=bbox, page_num=page_num, reading_order=7600 + order, source=source, reference=reference)
                     if artifact:
                         out.append(artifact)
@@ -185,6 +199,7 @@ def _artifact_from_result(
             "order_items": orders,
             "vitals": vitals,
             "fields": fields,
+            "multimodal_medicine": result.get("multimodal_medicine") or {},
             "short_forms": normalizer.get("short_forms", []),
             "drug_candidates": normalizer.get("drug_candidates", []),
         },
@@ -281,7 +296,15 @@ def _is_meaningful_order(item: Dict[str, Any]) -> bool:
     )
     candidates = item.get("drug_candidates") or []
     short_forms = item.get("short_forms") or []
-    return bool(text and (candidates or short_forms or re.search(r"\b(?:mg|mcg|gm?|ml|iv|i/v|inj|tab|bd|tds|od|stat|ns|dns|rl)\b", text, re.I)))
+    return bool(
+        text
+        and (
+            item.get("drug")
+            or candidates
+            or short_forms
+            or re.search(r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|gm?|ml)\b|\b(?:iv|i/v|inj|tab|bd|tds|od|stat|ns|dns|rl)\b", text, re.I)
+        )
+    )
 
 
 def _best_drug(item: Dict[str, Any]) -> str:

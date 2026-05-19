@@ -141,6 +141,8 @@ def api_dashboard(request):
             "page_vision_sweep_enabled": config.ENABLE_PAGE_VISION_SWEEP,
             "groq_vision_ocr_enabled": config.ENABLE_GROQ_VISION_OCR,
             "handwriting_order_extractor_enabled": config.ENABLE_HANDWRITING_ORDER_EXTRACTOR,
+            "multimodal_medicine_extractor_enabled": config.ENABLE_MULTIMODAL_MEDICINE_EXTRACTOR,
+            "multimodal_medicine_backends": sorted(config.MULTIMODAL_MEDICINE_BACKENDS),
             "medocr_reference_layer_enabled": config.ENABLE_MEDOCR_REFERENCE_LAYER,
             "verification_enabled": config.ENABLE_GOT_VERIFICATION,
             "auto_schema_enabled": config.ENABLE_AUTO_SCHEMA,

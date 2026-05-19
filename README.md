@@ -75,9 +75,21 @@ What it does:
 - detects probable medicine/injection chart pages
 - creates focused crops for vitals, orders, and staff-nurse medicine charts
 - sends each crop to Groq vision with a strict medicine/vitals JSON prompt
+- sends the same crop through a multimodal medicine ensemble when enabled
 - normalizes short forms such as `Inj`, `IV`, `BD`, `TDS`, `STAT`, `NS`, `DNS`, and `RL`
 - normalizes common doctor-writing variants such as `PAN` to pantoprazole, `TRASTU` to trastuzumab, `DOCET` to docetaxel, and `PALONONAIL` to palonosetron
 - stores the result as handwriting artifacts before schema extraction
+
+### Multimodal medicine ensemble
+
+The medicine-name layer combines several readers instead of trusting one OCR output:
+
+- `KeraCare/keras-dots-ocr-finetuned-v1`: crop-level prescription drug-name extraction. This is the primary HF medicine-name reader.
+- `chinmays18/medical-prescription-ocr`: Donut-based handwritten prescription OCR. This is kept as a second visual OCR vote.
+- `Muizzzz8/phi3-prescription-reader`: experimental prescription interpreter over OCR/context text. It is best-effort and may fail gracefully depending on the Transformers/runtime combination.
+- local drug dictionary and fuzzy matching: confirms names, fixes common doctor-writing variants, and preserves nearby dose evidence.
+
+The ensemble output is merged into `order_items` before schema extraction, so downstream records see normalized drug names with dose/evidence metadata.
 
 The MedOCR dataset layer uses:
 
@@ -133,6 +145,12 @@ DOC_READER_ENABLE_HANDWRITING_ORDER_EXTRACTOR=1
 DOC_READER_HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT=5
 DOC_READER_HANDWRITING_ORDER_MAX_CROPS_PER_PAGE=8
 DOC_READER_HANDWRITING_ORDER_RENDER_DPI=220
+
+DOC_READER_ENABLE_MULTIMODAL_MEDICINE_EXTRACTOR=1
+DOC_READER_MULTIMODAL_MEDICINE_BACKENDS=keracare,donut,phi3,dictionary
+DOC_READER_KERACARE_MEDICINE_MODEL_ID=KeraCare/keras-dots-ocr-finetuned-v1
+DOC_READER_DONUT_PRESCRIPTION_MODEL_ID=chinmays18/medical-prescription-ocr
+DOC_READER_PHI3_PRESCRIPTION_MODEL_ID=Muizzzz8/phi3-prescription-reader
 
 DOC_READER_ENABLE_MEDOCR_REFERENCE_LAYER=1
 DOC_READER_MEDOCR_VISION_DATASET_ID=naazimsnh02/medocr-vision-dataset
@@ -265,6 +283,7 @@ nvidia-smi
 - `evolet/pipeline/services/layout_segmenter.py`
 - `evolet/pipeline/services/page_vision_sweep.py`
 - `evolet/pipeline/services/handwriting_order_extractor.py`
+- `evolet/pipeline/services/multimodal_medicine_extractor.py`
 - `evolet/pipeline/services/artifact_extractor.py`
 - `evolet/pipeline/services/medical_short_forms.py`
 - `evolet/pipeline/services/medocr_reference.py`
@@ -275,7 +294,9 @@ nvidia-smi
 
 ## Known Limits
 
-- Doctor handwriting is still probabilistic. The best current path is crop selection plus strict vision prompting plus medical normalization.
+- Doctor handwriting is still probabilistic. The best current path is crop selection plus Groq vision plus KeraCare/Donut/Phi3/dictionary medicine-name reconciliation.
+- `KeraCare/keras-dots-ocr-finetuned-v1` requires `transformers==4.51.3`, `qwen-vl-utils`, `trust_remote_code`, and GPU memory headroom.
+- `Muizzzz8/phi3-prescription-reader` is wired as a best-effort interpreter; it may fail gracefully in some runtime combinations.
 - PaddleOCR PP-Structure may return zero artifacts for some PDFs; the pipeline still falls back to native text, page vision, and chart-region crops.
 - Groq quota can block final schema cleanup even when extraction has completed. The extracted artifacts and mentions are still saved.
 - The Paddle GPU packages were live-installed on the VM after rebuild during testing. For permanent deployment, bake the chosen Paddle GPU version into the Docker image.
