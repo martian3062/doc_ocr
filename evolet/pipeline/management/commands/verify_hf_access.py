@@ -20,10 +20,11 @@ class Command(BaseCommand):
         models = options["models"] or [
             config.TROCR_MODEL_ID,
             config.MEDICAL_HANDWRITING_MODEL_ID,
+            *config.MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS,
             config.GOT_OCR_MODEL_ID,
             config.VALIDATION_MODEL_ID,
         ]
-        models = [model for model in models if model]
+        models = list(dict.fromkeys(model for model in models if model))
 
         try:
             from huggingface_hub import HfApi
