@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any, Dict, Iterable, List
 
 import fitz
 import torch
+from torch import nn
 from django.core.management.base import BaseCommand, CommandError
 
 from pipeline.models import DocumentArtifact, PDFDocument, PipelineRun
@@ -203,6 +205,11 @@ def _load_recognizer(model_id: str, *, trust_remote_code: bool):
         model_kwargs["device_map"] = "auto"
 
     load_errors = []
+    if model_id == "ismatsamadov/handwriting-recognition-iam":
+        return _load_ismatsamadov_crnn(model_id)
+    if model_id == "Teklia/pylaia-iam":
+        raise RuntimeError("Teklia/pylaia-iam requires a PyLaia decoder runner; direct Transformers inference is not available")
+
     if "trocr" in model_id.lower():
         try:
             processor = TrOCRProcessor.from_pretrained(model_id, **common_kwargs)
@@ -273,6 +280,89 @@ def _load_recognizer(model_id: str, *, trust_remote_code: bool):
     except Exception as exc:
         load_errors.append(f"pipeline: {str(exc)[:180]}")
     raise RuntimeError("; ".join(load_errors))
+
+
+class CharacterMapper:
+    def __init__(self):
+        self.chars: List[str] = []
+        self.char2idx: Dict[str, int] = {}
+        self.idx2char: Dict[int, str] = {0: ""}
+        self.num_classes = 1
+
+    def decode(self, indices: Iterable[int]) -> str:
+        chars = []
+        prev = None
+        for idx in indices:
+            if idx != 0 and idx != prev and idx in self.idx2char:
+                chars.append(self.idx2char[idx])
+            prev = idx
+        return "".join(chars)
+
+
+class IsmatCRNN(nn.Module):
+    def __init__(self, num_chars: int, hidden_size: int = 256, num_layers: int = 2):
+        super().__init__()
+        self.cnn = nn.Sequential(
+            nn.Conv2d(1, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(), nn.MaxPool2d(2, 2),
+            nn.Conv2d(64, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(), nn.MaxPool2d(2, 2),
+            nn.Conv2d(128, 256, 3, padding=1), nn.BatchNorm2d(256), nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1), nn.BatchNorm2d(256), nn.ReLU(), nn.MaxPool2d((2, 1)),
+            nn.Conv2d(256, 512, 3, padding=1), nn.BatchNorm2d(512), nn.ReLU(),
+            nn.Conv2d(512, 512, 3, padding=1), nn.BatchNorm2d(512), nn.ReLU(), nn.MaxPool2d((2, 1)),
+            nn.Conv2d(512, 512, 2), nn.BatchNorm2d(512), nn.ReLU(),
+        )
+        self.map2seq = nn.Linear(512 * 7, hidden_size)
+        self.rnn = nn.LSTM(
+            hidden_size,
+            hidden_size,
+            num_layers,
+            bidirectional=True,
+            dropout=0.3 if num_layers > 1 else 0,
+            batch_first=True,
+        )
+        self.fc = nn.Linear(hidden_size * 2, num_chars + 1)
+
+    def forward(self, x):
+        conv = self.cnn(x)
+        b, c, h, w = conv.size()
+        conv = conv.permute(0, 3, 1, 2).reshape(b, w, c * h)
+        seq = self.map2seq(conv)
+        rnn_out, _ = self.rnn(seq)
+        output = self.fc(rnn_out)
+        return torch.nn.functional.log_softmax(output, dim=2)
+
+
+def _load_ismatsamadov_crnn(model_id: str):
+    from huggingface_hub import hf_hub_download
+
+    # The checkpoint pickles CharacterMapper as __main__.CharacterMapper.
+    setattr(sys.modules["__main__"], "CharacterMapper", CharacterMapper)
+    ckpt_path = hf_hub_download(repo_id=model_id, filename="best_model.pth", token=config.HF_TOKEN)
+    checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    char_mapper = checkpoint["char_mapper"]
+    model = IsmatCRNN(num_chars=len(char_mapper.chars))
+    model.load_state_dict(checkpoint["model_state_dict"])
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.eval()
+
+    def _run(image, model=model, mapper=char_mapper, device=device):
+        tensor = _preprocess_ismat_image(image).to(device)
+        with torch.inference_mode():
+            output = model(tensor)
+        pred_indices = output.argmax(dim=2).squeeze(0).tolist()
+        return mapper.decode(pred_indices)
+
+    return _run
+
+
+def _preprocess_ismat_image(image):
+    gray = image.convert("L").resize((512, 128))
+    import numpy as np
+
+    arr = np.array(gray, dtype=np.float32) / 255.0
+    arr = (arr - 0.5) / 0.5
+    return torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
 
 
 def _render_case(case: CropCase):

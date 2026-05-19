@@ -116,10 +116,11 @@ Optional local/HF models remain supported:
 - `Qwen/Qwen2.5-1.5B-Instruct`
 - `google/medgemma-1.5-4b-it`
 - `microsoft/trocr-large-handwritten`
+- `Teklia/pylaia-iam`
 - `espnet/iam_handwriting_ocr`
+- `ismatsamadov/handwriting-recognition-iam`
 - `Riksarkivet/satrn_htr`
 - `Emeritus-21/Finetuned-full-HTR-model`
-- `ismatsamadov/handwriting-recognition-iam`
 - `DungHugging/vietocr-handwritten-finetune`
 - `Valerii02/ukr-htr-convtext`
 - `stepfun-ai/GOT-OCR-2.0-hf`
@@ -162,7 +163,7 @@ DOC_READER_HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT=5
 DOC_READER_HANDWRITING_ORDER_MAX_CROPS_PER_PAGE=8
 DOC_READER_HANDWRITING_ORDER_RENDER_DPI=220
 DOC_READER_MEDICAL_HANDWRITING_MODEL_ID=espnet/iam_handwriting_ocr
-DOC_READER_MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS=espnet/iam_handwriting_ocr,Riksarkivet/satrn_htr,Emeritus-21/Finetuned-full-HTR-model,ismatsamadov/handwriting-recognition-iam,DungHugging/vietocr-handwritten-finetune,Valerii02/ukr-htr-convtext
+DOC_READER_MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS=Teklia/pylaia-iam,espnet/iam_handwriting_ocr,ismatsamadov/handwriting-recognition-iam,Riksarkivet/satrn_htr,Emeritus-21/Finetuned-full-HTR-model,DungHugging/vietocr-handwritten-finetune,Valerii02/ukr-htr-convtext
 
 DOC_READER_ENABLE_MULTIMODAL_MEDICINE_EXTRACTOR=1
 DOC_READER_MULTIMODAL_MEDICINE_BACKENDS=keracare,donut,phi3,dictionary

@@ -129,7 +129,7 @@ MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS = [
     item.strip()
     for item in env(
         "EVOLET_MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS",
-        "espnet/iam_handwriting_ocr,Riksarkivet/satrn_htr,Emeritus-21/Finetuned-full-HTR-model,ismatsamadov/handwriting-recognition-iam,DungHugging/vietocr-handwritten-finetune,Valerii02/ukr-htr-convtext",
+        "Teklia/pylaia-iam,espnet/iam_handwriting_ocr,ismatsamadov/handwriting-recognition-iam,Riksarkivet/satrn_htr,Emeritus-21/Finetuned-full-HTR-model,DungHugging/vietocr-handwritten-finetune,Valerii02/ukr-htr-convtext",
     ).split(",")
     if item.strip()
 ]
