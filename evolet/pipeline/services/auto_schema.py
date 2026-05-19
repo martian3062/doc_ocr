@@ -77,8 +77,24 @@ def enrich_with_auto_schema(
             base_sections=base_schema.get("sections", {}),
         )
         response_text = _call_schema_provider(prompt)
-        payload = parse_json_loose(response_text)
+        try:
+            payload = parse_json_loose(response_text)
+        except Exception:
+            if config.SCHEMA_PROVIDER != "local":
+                raise
+            compact_prompt = _build_compact_local_prompt(
+                patient_code=patient_code,
+                source_pdf=source_pdf,
+                mentions=mentions,
+                base_sections=base_schema.get("sections", {}),
+            )
+            response_text = _call_local(compact_prompt)
+            payload = parse_json_loose(response_text)
         if not isinstance(payload, dict):
+            if config.SCHEMA_PROVIDER == "local":
+                fallback["quality_checks"]["auto_schema"]["status"] = "local_json_fallback"
+                fallback["quality_checks"]["auto_schema"]["error"] = "local schema model returned non-object JSON"
+                return fallback
             raise ValueError("auto-schema response was not a JSON object")
         return _merge_provider_payload(
             fallback=fallback,
@@ -87,7 +103,7 @@ def enrich_with_auto_schema(
         )
     except Exception as exc:
         logger.warning("Auto-schema provider failed: %s", exc)
-        fallback["quality_checks"]["auto_schema"]["status"] = "failed"
+        fallback["quality_checks"]["auto_schema"]["status"] = "local_json_fallback" if config.SCHEMA_PROVIDER == "local" else "failed"
         fallback["quality_checks"]["auto_schema"]["error"] = str(exc)[:500]
         return fallback
 
@@ -143,7 +159,47 @@ def _build_prompt(
         f"source_pdf: {source_pdf}\n"
         f"base_sections_json: {json.dumps(base_sections, ensure_ascii=True)[:6000]}\n"
         f"mentions_json: {json.dumps(mention_preview, ensure_ascii=True)[:10000]}\n"
-        f"source_text:\n{source_text}"
+        f"source_text:\n{source_text}\n\n"
+        "FINAL OUTPUT RULE: output raw valid JSON only. The first character must be { and the last character must be }. "
+        "Do not write prose, markdown, headings, bullets, or explanations."
+    )
+
+
+def _build_compact_local_prompt(
+    *,
+    patient_code: str,
+    source_pdf: str,
+    mentions: List[Dict[str, Any]],
+    base_sections: Dict[str, Any],
+) -> str:
+    mention_preview = [
+        {
+            "category": m.get("category"),
+            "label": m.get("label"),
+            "value": m.get("normalized_value") or m.get("value"),
+            "evidence_quote": m.get("evidence_quote"),
+            "source_pages": m.get("source_pages"),
+        }
+        for m in mentions[:40]
+    ]
+    section_keys = sorted(str(k) for k in (base_sections or {}).keys())[:20]
+    return (
+        "Create an adaptive medical document schema from the data below.\n"
+        "Return exactly one valid JSON object with this exact top-level shape:\n"
+        "{"
+        "\"document_type\":\"\","
+        "\"document_profile\":{\"document_type\":\"\",\"clinical_domain\":\"\",\"source_quality\":\"\",\"language\":\"\",\"key_dates\":[]},"
+        "\"major_info\":{\"primary_finding\":null,\"current_treatment\":null,\"investigation_summary\":null,\"plan_or_follow_up\":null,\"key_dates\":[],\"patient_identifiers\":{}},"
+        "\"sections\":{},"
+        "\"all_extracted_content\":{\"coverage_notes\":\"\",\"important_raw_lines\":[]},"
+        "\"quality_checks\":{\"schema_validation\":{\"status\":\"completed\",\"required_keys_present\":true},\"missing_or_uncertain_fields\":[],\"hallucination_risk\":\"low\",\"extraction_confidence\":0.8}"
+        "}\n"
+        "Use only the evidence. Keep section item values concise. No markdown. No prose.\n\n"
+        f"patient_code: {patient_code}\n"
+        f"source_pdf: {source_pdf}\n"
+        f"section_keys: {json.dumps(section_keys, ensure_ascii=True)}\n"
+        f"mentions_json: {json.dumps(mention_preview, ensure_ascii=True)}\n\n"
+        "FINAL OUTPUT RULE: output raw valid JSON only. The first character must be { and the last character must be }."
     )
 
 
@@ -196,6 +252,14 @@ def _call_local(prompt: str) -> str:
         max_new_tokens=config.SCHEMA_MAX_NEW_TOKENS,
         use_4bit=config.SCHEMA_LOCAL_USE_4BIT,
         unload_after=False,
+        system_prompt=(
+            "You are a strict JSON API for adaptive medical document schemas. "
+            "Return exactly one valid JSON object and nothing else. "
+            "No markdown, no headings, no explanation, no bullet points. "
+            "The first output character must be { and the last must be }. "
+            "The object must contain document_type, document_profile, major_info, "
+            "sections, all_extracted_content, and quality_checks."
+        ),
     )
     return outputs[0] if outputs else ""
 

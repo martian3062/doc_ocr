@@ -632,10 +632,11 @@ def run_merge_phase(run: PipelineRun) -> None:
         except Exception as exc:
             _log(run, "error", "merge", f"Merge failed for {patient.code}: {exc}")
 
-    # Medical transformer validation can load a multi-GB model. Keep the merge
-    # stage serial when it is enabled so a small run cannot start one validator
-    # per patient and overwhelm the VM.
-    merge_workers = 1 if config.ENABLE_TRANSFORMER_VALIDATION else min(config.MAX_WORKERS, max(1, patients.count()))
+    # Local schema/validation models are multi-GB singleton GPU models. Keep the
+    # merge stage serial for those modes so patient merges cannot start multiple
+    # model loads and corrupt the shared Accelerate device map.
+    local_gpu_schema = config.ENABLE_AUTO_SCHEMA and config.SCHEMA_PROVIDER == "local"
+    merge_workers = 1 if (config.ENABLE_TRANSFORMER_VALIDATION or local_gpu_schema) else min(config.MAX_WORKERS, max(1, patients.count()))
     with concurrent.futures.ThreadPoolExecutor(max_workers=merge_workers) as executor:
         list(executor.map(_merge_one, patients))
 

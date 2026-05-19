@@ -88,6 +88,13 @@ def load_model(model_id: str = None, force_reload: bool = False, use_4bit: Optio
     """
     global _model, _tokenizer, _model_id
 
+    with _MODEL_LOCK:
+        return _load_model_locked(model_id, force_reload, use_4bit)
+
+
+def _load_model_locked(model_id: str = None, force_reload: bool = False, use_4bit: Optional[bool] = None):
+    global _model, _tokenizer, _model_id
+
     model_id = model_id or config.MODEL_ID
 
     # Fast path: already loaded with the same ID
@@ -162,6 +169,11 @@ def unload_model() -> None:
     Should be called by the orchestrator after the LLM phase completes
     so that subsequent pipeline stages (merge, QC, photo) have full RAM.
     """
+    with _MODEL_LOCK:
+        _unload_model_locked()
+
+
+def _unload_model_locked() -> None:
     global _model, _tokenizer, _model_id
     if _model is not None:
         del _model
@@ -350,16 +362,31 @@ def _generate_batch(
 def _generate_batch_local(
     prompts: List[str],
     max_new_tokens: int = config.MAX_NEW_TOKENS,
+    system_prompt: str | None = None,
 ) -> List[str]:
     """Run a batched generation pass on the loaded local HF model."""
+    with _MODEL_LOCK:
+        return _generate_batch_local_locked(
+            prompts,
+            max_new_tokens=max_new_tokens,
+            system_prompt=system_prompt,
+        )
+
+
+def _generate_batch_local_locked(
+    prompts: List[str],
+    max_new_tokens: int = config.MAX_NEW_TOKENS,
+    system_prompt: str | None = None,
+) -> List[str]:
     if _tokenizer is None or _model is None:
         raise RuntimeError("Model not loaded — call load_model() before inference.")
+    system_prompt = system_prompt or config.SYSTEM_PROMPT
 
     # Format as chat turns using the model's own chat template
     rendered = [
         _tokenizer.apply_chat_template(
             [
-                {"role": "system", "content": config.SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": p},
             ],
             tokenize=False,
@@ -413,12 +440,17 @@ def generate_local_prompts(
     max_new_tokens: int = config.MAX_NEW_TOKENS,
     use_4bit: Optional[bool] = None,
     unload_after: bool = False,
+    system_prompt: str | None = None,
 ) -> List[str]:
     """Generate with a local HF model even when the main provider is Groq."""
     with _MODEL_LOCK:
         load_model(model_id=model_id or config.MODEL_ID, use_4bit=use_4bit)
         try:
-            return _generate_batch_local(prompts, max_new_tokens=max_new_tokens)
+            return _generate_batch_local(
+                prompts,
+                max_new_tokens=max_new_tokens,
+                system_prompt=system_prompt,
+            )
         finally:
             if unload_after:
                 unload_model()
