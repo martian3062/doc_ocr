@@ -67,24 +67,46 @@
     </header>
 
     <div class="grid gap-6 xl:grid-cols-[430px_1fr]">
-        <aside class="space-y-4 xl:sticky xl:top-6 xl:self-start">
-            <section x-data="{ selected: '{{ documents.first().id if documents else '' }}' }" class="overflow-hidden rounded-xl border border-slate-800/70 bg-[#11111d]/95">
+        <aside class="order-2 space-y-4 xl:order-1 xl:sticky xl:top-6 xl:self-start">
+            <section x-data="{ selected: '{{ documents.first().id if documents else '' }}', mobilePdfOpen: false, isDesktop: window.innerWidth >= 1280, init() { window.addEventListener('resize', () => { this.isDesktop = window.innerWidth >= 1280 }) } }" class="overflow-hidden rounded-xl border border-slate-800/70 bg-[#11111d]/95">
                 <div class="flex items-center justify-between gap-3 border-b border-slate-800/70 p-4">
                     <div>
                         <h2 class="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-300">
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9l-6-6H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                            PDF View
+                            Original PDF
                         </h2>
-                        <p class="mt-1 text-xs font-bold text-slate-500">Long source preview</p>
+                        <p class="mt-1 text-xs font-bold text-slate-500">Side-by-side on laptop, tap-to-view on mobile</p>
                     </div>
+                    <button type="button" @click="mobilePdfOpen = !mobilePdfOpen" class="inline-flex items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs font-black text-indigo-100 xl:hidden">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span x-text="mobilePdfOpen ? 'Hide PDF' : 'View PDF'"></span>
+                    </button>
                 </div>
 
-                <div class="h-[980px] bg-slate-950">
+                <div class="hidden h-[calc(100vh-8rem)] min-h-[680px] bg-slate-950 xl:block">
                     {% for doc in documents %}
-                    <iframe x-show="selected === '{{ doc.id }}'" src="{{ url('pipeline:api_document_pdf', doc_id=doc.id) }}#view=FitH" title="{{ doc.original_filename }}" class="h-full w-full bg-white" loading="lazy"></iframe>
+                    <iframe x-show="selected === '{{ doc.id }}'" :src="isDesktop ? '{{ url('pipeline:api_document_pdf', doc_id=doc.id) }}#view=FitH' : 'about:blank'" title="{{ doc.original_filename }}" class="h-full w-full bg-white" loading="lazy"></iframe>
                     {% endfor %}
                     {% if not documents %}
                     <div class="flex h-full items-center justify-center text-sm font-bold text-slate-500">No PDF linked.</div>
+                    {% endif %}
+                </div>
+
+                <div class="border-t border-slate-800/70 p-4 xl:hidden">
+                    {% if documents %}
+                    <button type="button" @click="mobilePdfOpen = !mobilePdfOpen" class="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-white via-sky-200 to-cyan-400 px-4 py-3 text-sm font-black text-sky-950">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9l-6-6H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                        <span x-text="mobilePdfOpen ? 'Close original PDF' : 'Show original PDF'"></span>
+                    </button>
+                    <div x-show="mobilePdfOpen" x-transition class="mt-4 overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+                        <div class="h-[72vh] min-h-[420px]">
+                            {% for doc in documents %}
+                            <iframe x-show="selected === '{{ doc.id }}'" :src="mobilePdfOpen ? '{{ url('pipeline:api_document_pdf', doc_id=doc.id) }}#view=FitH' : 'about:blank'" title="{{ doc.original_filename }}" class="h-full w-full bg-white" loading="lazy"></iframe>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="rounded-lg border border-dashed border-slate-800 p-6 text-center text-sm font-bold text-slate-500">No PDF linked.</div>
                     {% endif %}
                 </div>
 
@@ -104,7 +126,7 @@
             </section>
         </aside>
 
-        <section class="space-y-6">
+        <section class="order-1 space-y-6 xl:order-2">
             <section class="panel-dark rounded-xl p-5">
                 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
                     <div>
