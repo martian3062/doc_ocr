@@ -1,3 +1,5 @@
+name: doc_reader_django_only
+
 x-common: &common
   restart: unless-stopped
   volumes:
