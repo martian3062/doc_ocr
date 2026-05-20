@@ -71,6 +71,7 @@ from .services.regex_extractor  import extract_note_mentions
 from .services.relation_extractor import build_relation_payload
 from .services.validation import validate_final_record
 from .services.artifact_extractor import extract_artifact_mentions
+from .services.source_folders import documents_source_summary
 
 logger = logging.getLogger("pipeline")
 
@@ -524,6 +525,7 @@ def run_merge_phase(run: PipelineRun) -> None:
             )
             run_docs = list(patient.documents.filter(runs=run).order_by("original_filename"))
             doc = run_docs[0] if run_docs else patient.documents.first()
+            source_folder_payload = documents_source_summary(run_docs or ([doc] if doc else []))
             source_pdf = ", ".join(d.original_filename for d in run_docs) if run_docs else (doc.original_filename if doc else "")
             page_qs = PageLedger.objects.filter(document__in=run_docs) if run_docs else PageLedger.objects.filter(document=doc)
             note_qs = NoteLedger.objects.filter(document__in=run_docs) if run_docs else NoteLedger.objects.filter(document=doc)
@@ -587,12 +589,14 @@ def run_merge_phase(run: PipelineRun) -> None:
             )
             merged_stats = {
                 **final_data["stats"],
+                "source_folder": source_folder_payload,
                 "validation": validation_payload,
                 "auto_schema": deep_schema.get("quality_checks", {}).get("auto_schema", {}),
                 "hybrid_schema_cleaner": hybrid_cleaner_payload,
                 "text_corrections_applied": spell_check_payload.get("corrected_mentions", 0),
                 "mentions_after_hybrid_cleaner": len(corrected_mentions),
             }
+            deep_schema["source_folder"] = source_folder_payload
             deep_schema.setdefault("quality_checks", {})["hybrid_schema_cleaner"] = hybrid_cleaner_payload
             deep_schema["validation"] = validation_payload
             deep_schema.setdefault("quality_checks", {})["validation"] = validation_payload

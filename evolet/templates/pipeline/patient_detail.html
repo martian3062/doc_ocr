@@ -51,6 +51,9 @@
                 <div class="mb-3 flex flex-wrap items-center gap-2">
                     <span class="rounded-md border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Adaptive Schema Record</span>
                     <span class="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">Django-only</span>
+                    {% if source_folder.folder_name %}
+                    <span class="rounded-md border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-700">{{ source_folder.folder_name }}</span>
+                    {% endif %}
                 </div>
                 <h1 class="font-outfit text-4xl font-black tracking-tight text-sky-950">{{ patient.display_name or patient.code }}</h1>
                 <p class="mt-3 flex items-center gap-2 text-sm font-black text-slate-500">
@@ -59,7 +62,7 @@
                 </p>
             </div>
             <div class="grid gap-3 sm:grid-cols-4">
-                <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Documents</p><p class="mt-1 text-xl font-black text-sky-950">{{ documents.count() }}</p></div>
+                <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Documents</p><p class="mt-1 text-xl font-black text-sky-950">{{ document_count }}</p></div>
                 <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Sections</p><p class="mt-1 text-xl font-black text-sky-950">{{ category_count }}</p></div>
                 <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Fields</p><p class="mt-1 text-xl font-black text-sky-950">{{ mention_count }}</p></div>
                 <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Schema</p><p class="mt-1 text-xl font-black text-sky-950">{{ final_record.category_count if final_record else category_count }}</p></div>
@@ -69,7 +72,7 @@
 
     <div class="grid gap-6 xl:grid-cols-[430px_1fr]">
         <aside class="order-2 space-y-4 xl:order-1 xl:sticky xl:top-6 xl:self-start">
-            <section x-data="{ selected: '{{ documents.first().id if documents else '' }}', mobilePdfOpen: false, isDesktop: window.innerWidth >= 1280, init() { window.addEventListener('resize', () => { this.isDesktop = window.innerWidth >= 1280 }) } }" class="overflow-hidden rounded-xl border border-slate-800/70 bg-[#11111d]/95">
+            <section x-data="{ selected: '{{ first_document.id if first_document else '' }}', mobilePdfOpen: false, isDesktop: window.innerWidth >= 1280, init() { window.addEventListener('resize', () => { this.isDesktop = window.innerWidth >= 1280 }) } }" class="overflow-hidden rounded-xl border border-slate-800/70 bg-[#11111d]/95">
                 <div class="flex items-center justify-between gap-3 border-b border-slate-800/70 p-4">
                     <div>
                         <h2 class="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-300">
@@ -111,13 +114,14 @@
                     {% endif %}
                 </div>
 
-                {% if documents.count() > 1 %}
+                {% if document_count > 1 %}
                 <div class="border-t border-slate-800/70 p-4">
                     <h3 class="mb-3 text-xs font-black uppercase tracking-widest text-slate-400">Source files</h3>
                     <div class="space-y-2">
                         {% for doc in documents %}
                         <button type="button" @click="selected='{{ doc.id }}'" class="w-full rounded-md border border-slate-800 bg-slate-950/35 p-3 text-left text-xs font-bold text-slate-300 transition hover:border-indigo-500/40" :class="selected === '{{ doc.id }}' ? 'border-indigo-500/50 bg-indigo-500/10 text-white' : ''">
                             <span class="line-clamp-2">{{ doc.original_filename }}</span>
+                            <span class="mt-1 block text-[10px] uppercase tracking-widest text-cyan-300">{{ doc.source_folder.folder_name }}</span>
                             <span class="mt-1 block text-[10px] uppercase tracking-widest text-slate-500">{{ doc.page_count or '?' }} pages</span>
                         </button>
                         {% endfor %}
@@ -172,7 +176,7 @@
                         <div class="border-b border-slate-800/70 py-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Validation</p><p class="mt-1 text-sm font-black text-slate-100">{{ final_record.stats.validation.status if final_record and final_record.stats.validation else 'completed' }}</p></div>
                         <div class="border-b border-slate-800/70 py-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Backend</p><p class="mt-1 text-sm font-black text-slate-100">{{ final_record.stats.validation.backend if final_record and final_record.stats.validation else 'heuristic' }}</p></div>
                         <div class="border-b border-slate-800/70 py-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Categories</p><p class="mt-1 text-sm font-black text-slate-100">{{ category_count }}</p></div>
-                        <div class="border-b border-slate-800/70 py-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Documents</p><p class="mt-1 text-sm font-black text-slate-100">{{ documents.count() }}</p></div>
+                        <div class="border-b border-slate-800/70 py-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Documents</p><p class="mt-1 text-sm font-black text-slate-100">{{ document_count }}</p></div>
                     </div>
                     {% set hybrid_cleaner = final_record.stats.hybrid_schema_cleaner if final_record and final_record.stats else None %}
                     {% if hybrid_cleaner %}

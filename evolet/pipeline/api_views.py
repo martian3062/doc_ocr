@@ -17,6 +17,7 @@ from .models import (
 )
 from .services.gpu_utils import gpu_info, system_info
 from .services import config
+from .services.source_folders import document_source_payload
 
 def _serialize_patient(p):
     return {
@@ -76,6 +77,7 @@ def _serialize_document(doc):
         "patient_code": doc.patient.code,
         "patient_name": doc.patient.display_name or doc.patient.code,
         "source_type": doc.source_type,
+        "source_folder": document_source_payload(doc),
         "page_count": doc.page_count,
         "file_size_bytes": doc.file_size_bytes,
         "created_at": doc.created_at.isoformat(),

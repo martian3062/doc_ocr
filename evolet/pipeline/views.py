@@ -46,6 +46,7 @@ from .models import (
 from .services.gpu_utils import gpu_info, system_info
 from .services.qc import compute_run_summary
 from .services.queue import enqueue_pipeline_run
+from .services.source_folders import document_source_payload, documents_source_summary
 
 logger = logging.getLogger("pipeline")
 
@@ -449,8 +450,11 @@ def patient_detail(request, patient_id):
       the chronological view (empty dates appear at the end)
     """
     patient   = get_object_or_404(Patient, id=patient_id)
-    documents = patient.documents.all()
+    documents = list(patient.documents.all())
+    for doc in documents:
+        doc.source_folder = document_source_payload(doc)
     final_record = getattr(patient, "final_record", None)
+    source_folder = documents_source_summary(documents)
     schema_payload = final_record.grouped_record if final_record else {}
     cleaned_mentions = []
     grouped: dict = {}
@@ -483,10 +487,13 @@ def patient_detail(request, patient_id):
     return render(request, "pipeline/patient_detail.html", {
         "patient":          patient,
         "documents":        documents,
+        "document_count":   len(documents),
+        "first_document":   documents[0] if documents else None,
         "mentions":         cleaned_mentions,
         "grouped_mentions": grouped,
         "timeline_mentions":timeline_mentions,
         "final_record":     final_record,
+        "source_folder":    source_folder,
         "notes":            notes,
         "mention_count":    len(cleaned_mentions),
         "category_count":   len(grouped),
@@ -532,6 +539,8 @@ def run_detail(request, run_id):
             artifact_rows=Count("artifacts", filter=Q(artifacts__run=run), distinct=True),
         ).order_by("original_filename")
     )
+    for doc in documents:
+        doc.source_folder = document_source_payload(doc)
     patients = list(
         Patient.objects.filter(documents__runs=run).distinct().order_by("code")
     )
@@ -548,6 +557,7 @@ def run_detail(request, run_id):
         patient_rows.append({
             "patient": patient,
             "documents": run_docs,
+            "source_folder": documents_source_summary(run_docs),
             "mention_count": run_mentions,
             "artifact_count": run_artifacts,
             "final_record": final_record,
@@ -796,10 +806,18 @@ def download_patient_json(request, patient_id):
         "category", "label", "value", "normalized_value",
         "date_text", "certainty", "evidence_quote", "origin",
     ))
+    documents = list(patient.documents.all())
+    final_record = getattr(patient, "final_record", None)
+    source_folder = documents_source_summary(documents)
 
     response = HttpResponse(
         json.dumps(
-            {"patient_code": patient.code, "mentions": mentions},
+            {
+                "patient_code": patient.code,
+                "source_folder": source_folder,
+                "final_record_source_folder": (final_record.stats or {}).get("source_folder") if final_record else {},
+                "mentions": mentions,
+            },
             indent=2,
             default=str,
         ),
@@ -827,11 +845,19 @@ def download_run_zip(request, run_id):
         zip_dir.mkdir()
 
         for patient in patients:
+            documents = list(patient.documents.filter(runs=run))
+            final_record = getattr(patient, "final_record", None)
             mentions = list(patient.mentions.filter(run=run).values(
                 "category", "label", "value", "normalized_value",
                 "date_text", "certainty", "evidence_quote", "origin",
             ))
-            data = {"patient_code": patient.code, "mentions": mentions}
+            data = {
+                "patient_code": patient.code,
+                "run_id": str(run.id),
+                "source_folder": documents_source_summary(documents),
+                "final_record_source_folder": (final_record.stats or {}).get("source_folder") if final_record else {},
+                "mentions": mentions,
+            }
             (zip_dir / f"{patient.code}_record.json").write_text(
                 json.dumps(data, indent=2, default=str),
                 encoding="utf-8",
