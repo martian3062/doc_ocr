@@ -62,6 +62,10 @@
                             <p class="mt-1 text-xs font-black text-cyan-300">Started {{ run.started_at.strftime('%Y-%m-%d %H:%M') }}</p>
                             {% endif %}
                             <p class="mt-1 line-clamp-1 text-xs font-bold text-slate-600">{{ run.model_id }}</p>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                <span class="rounded-md border border-slate-700 bg-slate-950/50 px-2 py-1 text-[10px] font-black uppercase tracking-widest {{ 'text-emerald-200' if run.run_kind == 'main' else 'text-amber-200' }}">{{ run.run_kind }}</span>
+                                {% if run.approach_key %}<span class="rounded-md border border-slate-700 bg-slate-950/50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-300">{{ run.approach_key }}</span>{% endif %}
+                            </div>
                         </td>
                         <td class="px-5 py-4">
                             {% set status = run.status %}
@@ -90,10 +94,15 @@
                             <p class="mt-2 text-xs font-bold text-slate-600">{{ run.total_notes }} notes · {{ run.resolved_notes }} resolved</p>
                         </td>
                         <td class="px-5 py-4 text-right">
+                            <div class="inline-flex flex-wrap justify-end gap-2">
+                            <a href="{{ url('pipeline:run_compare', run_id=run.id) }}" class="inline-flex items-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs font-black text-indigo-100 transition hover:border-indigo-300">
+                                Compare
+                            </a>
                             <a href="{{ url('pipeline:run_detail', run_id=run.id) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-black text-slate-200 transition hover:border-cyan-400/60 hover:text-cyan-100">
                                 Details
                                 <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                             </a>
+                            </div>
                         </td>
                     </tr>
                     {% else %}

@@ -572,6 +572,49 @@ def run_detail(request, run_id):
     })
 
 
+def run_compare(request, run_id):
+    """Compare a main run against its non-destructive experimental runs."""
+    selected = get_object_or_404(PipelineRun, id=run_id)
+    parent = selected.parent_run or selected
+    related_runs = list(
+        PipelineRun.objects.filter(Q(id=parent.id) | Q(parent_run=parent))
+        .annotate(
+            document_count=Count("documents", distinct=True),
+            patient_count=Count("documents__patient", distinct=True),
+            result_count=Count("finalrecord", distinct=True),
+            artifact_count=Count("artifacts", distinct=True),
+        )
+        .order_by("created_at")
+    )
+
+    rows = []
+    best_score = None
+    for run in related_runs:
+        snapshot = run.comparison_snapshot or {}
+        totals = snapshot.get("totals") or {}
+        score = int(snapshot.get("score") or 0)
+        if best_score is None or score > best_score:
+            best_score = score
+        rows.append({
+            "run": run,
+            "snapshot": snapshot,
+            "totals": totals,
+            "score": score,
+            "category_counts": snapshot.get("category_counts") or {},
+            "artifact_counts": snapshot.get("artifact_counts") or {},
+            "patients": snapshot.get("patients") or [],
+        })
+
+    for row in rows:
+        row["is_best"] = row["score"] == best_score and best_score is not None
+
+    return render(request, "pipeline/run_compare.html", {
+        "parent": parent,
+        "selected": selected,
+        "rows": rows,
+    })
+
+
 @require_POST
 def start_run(request):
     """

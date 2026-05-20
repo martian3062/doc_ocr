@@ -110,6 +110,10 @@ class PipelineRun(models.Model):
         COMPLETED      = "completed",      "Completed"
         FAILED         = "failed",         "Failed"
 
+    class RunKind(models.TextChoices):
+        MAIN       = "main",       "Main pipeline"
+        EXPERIMENT = "experiment", "Experimental pipeline"
+
     id   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200, blank=True)
     status = models.CharField(
@@ -117,6 +121,19 @@ class PipelineRun(models.Model):
     )
     model_id = models.CharField(max_length=200, default="Qwen/Qwen2.5-1.5B-Instruct")
     use_4bit = models.BooleanField(default=True)
+    run_kind = models.CharField(
+        max_length=20, choices=RunKind.choices, default=RunKind.MAIN
+    )
+    approach_key = models.CharField(max_length=80, blank=True)
+    approach_config = models.JSONField(default=dict, blank=True)
+    comparison_snapshot = models.JSONField(default=dict, blank=True)
+    parent_run = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="experiment_runs",
+    )
 
     # ── Progress counters (updated after each document) ──────────────────
     total_pdfs       = models.IntegerField(default=0)

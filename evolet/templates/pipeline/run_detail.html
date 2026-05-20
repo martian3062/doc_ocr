@@ -9,6 +9,7 @@
             Runs
         </a>
         <div class="flex flex-wrap gap-2">
+            <a href="{{ url('pipeline:run_compare', run_id=run.id) }}" class="rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700 hover:bg-indigo-100">Compare plans</a>
             {% if run.status not in ['completed', 'failed'] %}
             <form method="post" action="{{ url('pipeline:cancel_run', run_id=run.id) }}">
                 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
@@ -35,6 +36,8 @@
                     {% include "pipeline/components/status_badge.html" %}
                     <span class="rounded-md border border-sky-200 bg-white/70 px-3 py-1 text-xs font-black text-slate-600">{{ run.model_id }}</span>
                     <span class="rounded-md border border-sky-200 bg-white/70 px-3 py-1 text-xs font-black text-slate-600">{{ '4-bit' if run.use_4bit else 'FP16' }}</span>
+                    <span class="rounded-md border border-sky-200 bg-white/70 px-3 py-1 text-xs font-black text-slate-600">{{ run.run_kind }}</span>
+                    {% if run.approach_key %}<span class="rounded-md border border-sky-200 bg-white/70 px-3 py-1 text-xs font-black text-slate-600">{{ run.approach_key }}</span>{% endif %}
                 </div>
             </div>
             <div class="grid w-full gap-3 sm:grid-cols-3 xl:w-auto">
