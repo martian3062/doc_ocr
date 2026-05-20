@@ -22,12 +22,106 @@ and attributes dict are kept.
 """
 
 import logging
+import re
 from collections import defaultdict
+from difflib import SequenceMatcher
 from typing import Any, Dict, List
 
 from .pdf_extractor import normalize_text
 
 logger = logging.getLogger("pipeline")
+
+
+def _list_union(*values) -> List:
+    merged = set()
+    for value in values:
+        if isinstance(value, (list, tuple, set)):
+            merged.update(item for item in value if item not in ("", None))
+        elif value not in ("", None):
+            merged.add(value)
+    return sorted(merged)
+
+
+def _compact_key(value: Any) -> str:
+    text = normalize_text(str(value or "")).lower()
+    text = re.sub(r"\b(uncertain|possible|confirmed|diagnosis|on|admission|final|provisional)\b", " ", text)
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _dose_key(attributes: Dict[str, Any]) -> str:
+    dose = _compact_key(attributes.get("dose") or attributes.get("dosage") or "")
+    route = _compact_key(attributes.get("route") or "")
+    frequency = _compact_key(attributes.get("frequency_or_time") or attributes.get("frequency") or "")
+    return "|".join(part for part in [dose, route, frequency] if part)
+
+
+def _semantic_key(mention: Dict[str, Any]) -> str:
+    category = _compact_key(mention.get("category") or "unknown")
+    attrs = mention.get("attributes") if isinstance(mention.get("attributes"), dict) else {}
+    if category == "medication":
+        drug = _compact_key(attrs.get("drug_name") or mention.get("normalized_value") or "")
+        dose = _dose_key(attrs)
+        if drug:
+            return f"{category}|{drug}|{dose}"
+    value = _compact_key(mention.get("normalized_value") or mention.get("value") or "")
+    label = _compact_key(mention.get("label") or "")
+    if value:
+        return f"{category}|{value}"
+    return f"{category}|{label}"
+
+
+def _looks_duplicate(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
+    if _compact_key(left.get("category")) != _compact_key(right.get("category")):
+        return False
+    left_key = _semantic_key(left)
+    right_key = _semantic_key(right)
+    if left_key == right_key:
+        return True
+    left_value = _compact_key(left.get("normalized_value") or left.get("value"))
+    right_value = _compact_key(right.get("normalized_value") or right.get("value"))
+    if not left_value or not right_value:
+        return False
+    shorter, longer = sorted([left_value, right_value], key=len)
+    if len(shorter) >= 14 and shorter in longer:
+        return True
+    return SequenceMatcher(None, left_value, right_value).ratio() >= 0.9
+
+
+def _merge_duplicate_into(existing: Dict[str, Any], duplicate: Dict[str, Any]) -> Dict[str, Any]:
+    existing["source_pages"] = _list_union(existing.get("source_pages"), duplicate.get("source_pages"))
+    existing["evidence_ids"] = _list_union(existing.get("evidence_ids"), duplicate.get("evidence_ids"))
+    existing["evidence_artifact_ids"] = _list_union(
+        existing.get("evidence_artifact_ids"),
+        duplicate.get("evidence_artifact_ids"),
+    )
+    existing["origins"] = _list_union(existing.get("origins"), duplicate.get("origins"))
+    existing["duplicate_count"] = int(existing.get("duplicate_count") or 1) + int(duplicate.get("duplicate_count") or 1)
+
+    existing_attrs = existing.get("attributes") if isinstance(existing.get("attributes"), dict) else {}
+    duplicate_attrs = duplicate.get("attributes") if isinstance(duplicate.get("attributes"), dict) else {}
+    existing["attributes"] = {**duplicate_attrs, **existing_attrs}
+
+    for field in ("value", "normalized_value", "evidence_quote"):
+        current = normalize_text(existing.get(field, ""))
+        incoming = normalize_text(duplicate.get(field, ""))
+        if incoming and len(incoming) > len(current):
+            existing[field] = incoming
+    return existing
+
+
+def clean_duplicate_mentions(mentions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collapse near-identical schema items after exact-key merging."""
+    cleaned: List[Dict[str, Any]] = []
+    for mention in mentions:
+        match = next((item for item in cleaned if _looks_duplicate(item, mention)), None)
+        if match:
+            _merge_duplicate_into(match, mention)
+        else:
+            mention.setdefault("duplicate_count", 1)
+            cleaned.append(mention)
+    cleaned.sort(key=lambda x: (x["category"], x["date_text"], x["label"], x["normalized_value"]))
+    return cleaned
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -85,8 +179,10 @@ def merge_mentions(mentions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "attributes":       m.get("attributes", {}) if isinstance(m.get("attributes", {}), dict) else {},
             "source_pages":     sorted(set(m.get("source_pages", []))),
             "evidence_ids":     sorted(set(m.get("evidence_ids", []))),
+            "evidence_artifact_ids": sorted(set(m.get("evidence_artifact_ids", []))),
             "evidence_quote":   normalize_text(m.get("evidence_quote", "")),
             "origins":          [m.get("origin", "unknown")],
+            "duplicate_count":   1,
         }
 
         if key not in merged:
@@ -100,9 +196,13 @@ def merge_mentions(mentions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             existing["evidence_ids"] = sorted(
                 set(existing["evidence_ids"]) | set(entry["evidence_ids"])
             )
+            existing["evidence_artifact_ids"] = sorted(
+                set(existing.get("evidence_artifact_ids", [])) | set(entry["evidence_artifact_ids"])
+            )
             existing["origins"] = sorted(
                 set(existing["origins"]) | set(entry["origins"])
             )
+            existing["duplicate_count"] = int(existing.get("duplicate_count") or 1) + 1
             # Prefer keeping existing non-empty evidence_quote / attributes
             if not existing["evidence_quote"] and entry["evidence_quote"]:
                 existing["evidence_quote"] = entry["evidence_quote"]
@@ -112,7 +212,7 @@ def merge_mentions(mentions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     # Sort for deterministic output
     out = list(merged.values())
     out.sort(key=lambda x: (x["category"], x["date_text"], x["label"], x["normalized_value"]))
-    return out
+    return clean_duplicate_mentions(out)
 
 
 def group_mentions(

@@ -27,6 +27,7 @@
         <span>{{ m.origin or 'extractor' }}</span>
         {% if m.source_pages %}<span>Page {{ m.source_pages|join(', ') }}</span>{% endif %}
         {% if m.date_text %}<span>{{ m.date_text }}</span>{% endif %}
+        {% if m.duplicate_count and m.duplicate_count > 1 %}<span>Merged {{ m.duplicate_count }} repeats</span>{% endif %}
     </div>
 </article>
 {%- endmacro %}

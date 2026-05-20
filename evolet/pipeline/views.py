@@ -32,6 +32,7 @@ from urllib.parse import urlencode
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Count, Q
+from django.db.models.functions import Coalesce
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -324,16 +325,17 @@ def folder_browser(request):
     })
 
 
-def _recent_runs_queryset(limit: int = 5):
-    return (
+def _recent_runs_queryset(limit: int | None = None):
+    queryset = (
         PipelineRun.objects.annotate(
             document_count=Count("documents", distinct=True),
             patient_count=Count("documents__patient", distinct=True),
             result_count=Count("finalrecord", distinct=True),
             artifact_count=Count("artifacts", distinct=True),
         )
-        .order_by("-created_at")[:limit]
+        .order_by("-created_at")
     )
+    return queryset[:limit] if limit else queryset
 
 
 def recent_runs_partial(request):
@@ -411,9 +413,10 @@ def patient_list(request):
     """
     q = request.GET.get("q", "").strip()
 
-    patients = Patient.objects.annotate(
-        mention_count = Count("mentions"),
-        doc_count     = Count("documents"),
+    patients = Patient.objects.select_related("final_record").annotate(
+        raw_mention_count = Count("mentions", distinct=True),
+        mention_count     = Coalesce("final_record__mention_count", Count("mentions", distinct=True)),
+        doc_count         = Count("documents", distinct=True),
     )
 
     if q:
@@ -447,17 +450,30 @@ def patient_detail(request, patient_id):
     """
     patient   = get_object_or_404(Patient, id=patient_id)
     documents = patient.documents.all()
-    mentions  = patient.mentions.all().order_by("category", "date_text")
-
-    # Build category groups in Python (avoids extra DB round-trips)
+    final_record = getattr(patient, "final_record", None)
+    schema_payload = final_record.grouped_record if final_record else {}
+    cleaned_mentions = []
     grouped: dict = {}
-    for m in mentions:
-        grouped.setdefault(m.category, []).append(m)
 
-    # Timeline: notes with dates first, then undated, both sorted within group
+    if isinstance(schema_payload, dict) and schema_payload.get("mentions_flat"):
+        cleaned_mentions = list(schema_payload.get("mentions_flat") or [])
+        grouped = {
+            str(category): list(items or [])
+            for category, items in (schema_payload.get("grouped_record") or {}).items()
+        }
+    else:
+        raw_mentions = patient.mentions.all().order_by("category", "date_text")
+        cleaned_mentions = list(raw_mentions)
+        for m in cleaned_mentions:
+            grouped.setdefault(m.category, []).append(m)
+
     timeline_mentions = sorted(
-        mentions,
-        key=lambda x: (x.date_text == "", x.date_text, x.category),
+        cleaned_mentions,
+        key=lambda x: (
+            (x.get("date_text", "") if isinstance(x, dict) else x.date_text) == "",
+            x.get("date_text", "") if isinstance(x, dict) else x.date_text,
+            x.get("category", "") if isinstance(x, dict) else x.category,
+        ),
     )
 
     notes = NoteLedger.objects.filter(
@@ -467,12 +483,12 @@ def patient_detail(request, patient_id):
     return render(request, "pipeline/patient_detail.html", {
         "patient":          patient,
         "documents":        documents,
-        "mentions":         mentions,
+        "mentions":         cleaned_mentions,
         "grouped_mentions": grouped,
         "timeline_mentions":timeline_mentions,
-        "final_record":     getattr(patient, "final_record", None),
+        "final_record":     final_record,
         "notes":            notes,
-        "mention_count":    mentions.count(),
+        "mention_count":    len(cleaned_mentions),
         "category_count":   len(grouped),
     })
 

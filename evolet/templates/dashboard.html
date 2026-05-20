@@ -100,7 +100,7 @@
     <section class="panel-dark rounded-xl p-6">
         <div class="mb-5 flex items-center gap-3">
             <svg class="h-6 w-6 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <h2 class="font-outfit text-xl font-black text-white">Recent Runs</h2>
+            <h2 class="font-outfit text-xl font-black text-white">Run History</h2>
         </div>
         <div hx-get="{{ url('pipeline:recent_runs_partial') }}" hx-trigger="load, every 5s" hx-swap="innerHTML">
             {% include "pipeline/partials/recent_runs.html" %}
