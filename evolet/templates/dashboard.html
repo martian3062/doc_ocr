@@ -1,282 +1,110 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Overview{% endblock %}
 
 {% block content %}
-<div class="space-y-8 slide-up">
-
-    <!-- ── Hero ── -->
-    <div class="text-center py-6">
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-xs font-semibold text-purple-600 dark:text-purple-300 mb-4">
-            <span class="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
-            doc-reader · Clinical Document Pipeline
-        </div>
-        <h1 class="text-4xl md:text-5xl font-extrabold gradient-text brand-font mb-2">Medical Data Extraction</h1>
-        <p class="text-slate-500 dark:text-slate-400 text-base">Lossless-first · Regex · NER · FAISS · LLM rescue</p>
-    </div>
-
-    <!-- ── Stat Cards ── -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-
-        <!-- Patients -->
-        <a href="{{ url('pipeline:patient_list') }}" class="glass rounded-2xl p-5 card-hover glow-purple border border-purple-200/40 dark:border-purple-500/15 group block">
-            <div class="flex items-center justify-between mb-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-700/20 flex items-center justify-center">
-                    <svg class="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                </div>
-                <svg class="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-purple-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+<div class="space-y-8">
+    <header class="mesh-bg rounded-[1.75rem] border border-sky-200/70 p-7 shadow-skyglass backdrop-blur-2xl lg:flex lg:items-end lg:justify-between">
+        <div class="relative z-10">
+            <div class="mb-3 flex items-center gap-3 text-sm font-black uppercase tracking-[0.22em] text-sky-500">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.5-3.5L12 3 3.5 6.5v5.7C3.5 17.3 7.1 21 12 22c4.9-1 8.5-4.7 8.5-9.8V6.5z"/></svg>
+                Evidence-native clinical reader
             </div>
-            <div class="text-3xl font-extrabold text-slate-800 dark:text-slate-100 brand-font">{{ total_patients }}</div>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Patients</p>
-        </a>
-
-        <!-- PDFs -->
-        <a href="{{ url('pipeline:folder_browser') }}" class="glass rounded-2xl p-5 card-hover glow-blue border border-blue-200/40 dark:border-blue-500/15 group block">
-            <div class="flex items-center justify-between mb-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-700/20 flex items-center justify-center">
-                    <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                    </svg>
-                </div>
-                <svg class="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-            </div>
-            <div class="text-3xl font-extrabold text-slate-800 dark:text-slate-100 brand-font">{{ total_pdfs }}</div>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">PDFs loaded</p>
-        </a>
-
-        <!-- Mentions -->
-        <div class="glass rounded-2xl p-5 card-hover border border-indigo-200/40 dark:border-indigo-500/15">
-            <div class="flex items-center justify-between mb-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-700/20 flex items-center justify-center">
-                    <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-                    </svg>
-                </div>
-                <span class="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-200/50 dark:border-indigo-500/20">EXTRACTED</span>
-            </div>
-            <div class="text-3xl font-extrabold text-slate-800 dark:text-slate-100 brand-font">{{ total_mentions }}</div>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Clinical mentions</p>
-        </div>
-
-        <!-- GPU -->
-        <div class="glass rounded-2xl p-5 card-hover border border-violet-200/40 dark:border-violet-500/15"
-             hx-get="{{ url('pipeline:api_gpu_status') }}"
-             hx-trigger="every 15s"
-             hx-swap="outerHTML">
-            <div class="flex items-center justify-between mb-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-pink-700/20 flex items-center justify-center">
-                    <svg class="w-5 h-5 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
-                    </svg>
-                </div>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border
-                    {% if gpu.available %}text-violet-600 dark:text-violet-300 bg-violet-50 dark:bg-violet-500/10 border-violet-200/50 dark:border-violet-500/20
-                    {% else %}text-slate-500 bg-slate-50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-600{% endif %}">
-                    {% if gpu.available %}GPU{% else %}CPU{% endif %}
-                </span>
-            </div>
-            <div class="text-xl font-bold text-slate-800 dark:text-slate-100 brand-font truncate">
-                {% if gpu.available %}{{ gpu.device_name[:14] }}{% else %}CPU mode{% endif %}
-            </div>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {% if gpu.available %}{{ gpu.free_gb }} GB free{% else %}No GPU detected{% endif %}
+            <h1 class="font-outfit text-4xl font-black tracking-tight text-sky-950">doc-reader</h1>
+            <p class="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
+                Django-only review surface for OCR, handwriting crops, Groq schema extraction,
+                medical validation, and exact source provenance.
             </p>
         </div>
-    </div>
+        <div class="relative z-10 mt-5 flex gap-3 lg:mt-0">
+            <a href="{{ url('pipeline:folder_browser') }}" class="rounded-xl bg-gradient-to-r from-white via-sky-200 to-cyan-400 px-4 py-2 text-sm font-black text-sky-950 shadow-[0_12px_34px_rgba(56,189,248,0.26)]">Documents</a>
+            <a href="{{ url('pipeline:run_list') }}" class="rounded-xl border border-sky-200 bg-white/70 px-4 py-2 text-sm font-black text-sky-700">Runs</a>
+        </div>
+    </header>
 
-    <!-- ── Active run ── -->
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {% set cards = [
+            ('Patients', total_patients, 'M4 6h16M4 12h16M4 18h7'),
+            ('Documents', total_pdfs, 'M7 21h10a2 2 0 002-2V9l-6-6H7a2 2 0 00-2 2v14a2 2 0 002 2z'),
+            ('Mentions', total_mentions, 'M9 5h6M9 12h6M9 19h6M5 5h.01M5 12h.01M5 19h.01'),
+            ('Recent runs', recent_runs|length, 'M13 10V3L4 14h7v7l9-11h-7z')
+        ] %}
+        {% for label, value, icon in cards %}
+        <div class="stat-card">
+            <div class="mb-4 flex items-center justify-between">
+                <svg class="h-6 w-6 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="{{ icon }}"/></svg>
+                <span class="rounded-full bg-slate-900 px-2 py-1 text-[11px] font-bold text-slate-400">Live</span>
+            </div>
+            <div class="font-outfit text-3xl font-black text-white">{{ value }}</div>
+            <div class="mt-1 text-sm font-semibold text-slate-400">{{ label }}</div>
+        </div>
+        {% endfor %}
+    </section>
+
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div class="panel-dark rounded-xl p-6 xl:col-span-2">
+            <div class="mb-5 flex items-center gap-3">
+                <svg class="h-6 w-6 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                <h2 class="font-outfit text-xl font-black text-white">Active Pipeline</h2>
+            </div>
+            <div class="grid gap-3 md:grid-cols-2">
+                {% set items = [
+                    ('Django UI', 'Templates + static HTML/CSS/JS', true),
+                    ('Parser layer', 'PyMuPDF native text, optional page crops', true),
+                    ('Groq vision', 'Header + vitals + handwriting crops', true),
+                    ('Medicine normalizer', 'Dictionary and short-form expansion', true),
+                    ('Local HF models', 'Disabled in django_only runtime', false),
+                    ('Validation', 'Heuristic required, transformer off', true)
+                ] %}
+                {% for title, value, active in items %}
+                <div class="schema-card p-4">
+                    <div class="mb-2 flex items-center justify-between gap-3">
+                        <div class="text-sm font-bold text-slate-300">{{ title }}</div>
+                        <span class="h-3 w-3 rounded-full {{ 'bg-emerald-300' if active else 'bg-slate-700' }}"></span>
+                    </div>
+                    <div class="break-words text-sm font-semibold text-slate-500">{{ value }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="panel-dark rounded-xl p-6">
+            <div class="mb-5 flex items-center gap-3">
+                <svg class="h-6 w-6 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M7 7h10v10H7z"/></svg>
+                <h2 class="font-outfit text-xl font-black text-white">Runtime</h2>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <div class="text-sm font-semibold text-slate-400">Mode</div>
+                    <div class="mt-1 font-bold text-white">CPU + Groq cloud safe</div>
+                </div>
+                <div>
+                    <div class="mb-2 flex justify-between text-sm">
+                        <span class="font-semibold text-slate-400">GPU</span>
+                        <span class="font-bold text-slate-200">{% if gpu.available %}{{ gpu.used_gb }} / {{ gpu.total_gb }} GB{% else %}not used{% endif %}</span>
+                    </div>
+                    <div class="h-2 overflow-hidden rounded-full bg-slate-900">
+                        <div class="h-full rounded-full bg-emerald-400" style="width:{% if gpu.available %}{{ gpu.utilization_pct }}{% else %}0{% endif %}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     {% if active_run %}
-    <div class="glass rounded-2xl border border-purple-300/30 dark:border-purple-500/20 glow-purple overflow-hidden"
-         id="active-run-card"
-         hx-get="{{ url('pipeline:run_progress', run_id=active_run.id) }}"
-         hx-trigger="every 3s"
-         hx-swap="innerHTML">
+    <section class="glass rounded-2xl border border-sky-200/70" id="active-run-card" hx-get="{{ url('pipeline:run_progress', run_id=active_run.id) }}" hx-trigger="every 3s" hx-swap="innerHTML">
         {% set run = active_run %}
         {% include "pipeline/partials/run_progress.html" %}
-    </div>
+    </section>
     {% endif %}
 
-    <!-- ── Pipeline Stage Overview ── -->
-    <div class="glass rounded-2xl p-6 border border-slate-200/40 dark:border-white/5">
-        <h2 class="text-base font-bold text-slate-700 dark:text-slate-200 brand-font mb-5 flex items-center gap-2">
-            <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            Pipeline Stages
-        </h2>
-        <div class="flex flex-wrap items-center gap-2">
-            {% set stages = [
-                ('OCR',      'from-blue-400 to-blue-600',    'text-blue-600 dark:text-blue-300'),
-                ('Cleaning', 'from-cyan-400 to-cyan-600',    'text-cyan-600 dark:text-cyan-300'),
-                ('Regex',    'from-teal-400 to-teal-600',    'text-teal-600 dark:text-teal-300'),
-                ('NER',      'from-violet-400 to-violet-600','text-violet-600 dark:text-violet-300'),
-                ('FAISS',    'from-purple-400 to-purple-600','text-purple-600 dark:text-purple-300'),
-                ('LLM',      'from-pink-400 to-pink-600',    'text-pink-600 dark:text-pink-300'),
-                ('Merge',    'from-indigo-400 to-indigo-600','text-indigo-600 dark:text-indigo-300'),
-            ] %}
-            {% for name, grad, txt in stages %}
-            <div class="flex items-center gap-1">
-                <div class="px-3 py-1.5 rounded-lg bg-gradient-to-r {{ grad }} text-white text-xs font-bold shadow-sm">{{ name }}</div>
-                {% if not loop.last %}
-                <svg class="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                {% endif %}
-            </div>
-            {% endfor %}
+    <section class="panel-dark rounded-xl p-6">
+        <div class="mb-5 flex items-center gap-3">
+            <svg class="h-6 w-6 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <h2 class="font-outfit text-xl font-black text-white">Recent Runs</h2>
         </div>
-    </div>
-
-    <!-- ── System / ETA Panel ── -->
-    <div class="glass rounded-2xl border border-slate-200/40 dark:border-white/5 p-5"
-         x-data="etaPanel({{ total_pdfs }})"
-         x-init="load()">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-base font-bold text-slate-700 dark:text-slate-200 brand-font flex items-center gap-2">
-                <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
-                Hardware &amp; ETA
-            </h2>
-            <template x-if="loaded">
-                <span class="text-xs font-bold px-2.5 py-0.5 rounded-full border"
-                      :style="tierColor + ';border-color:currentColor;opacity:0.9;background:transparent'"
-                      x-text="tierLabel"></span>
-            </template>
+        <div hx-get="{{ url('pipeline:recent_runs_partial') }}" hx-trigger="load, every 5s" hx-swap="innerHTML">
+            {% include "pipeline/partials/recent_runs.html" %}
         </div>
-        <template x-if="!loaded">
-            <div class="flex items-center gap-2 text-sm text-slate-400"><span class="animate-spin w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full inline-block"></span> Detecting hardware…</div>
-        </template>
-        <template x-if="loaded">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <!-- Hardware summary -->
-                <div class="sm:col-span-2 space-y-2">
-                    <p class="text-sm text-slate-600 dark:text-slate-300 font-medium" x-text="hwSummary"></p>
-                    <div class="flex items-center gap-3">
-                        <div class="flex-1 h-2.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
-                            <div class="h-full rounded-full bg-gradient-to-r from-purple-500 to-blue-500"
-                                 :style="`width:${Math.min(100, nPdfs * 5 + 15)}%`"></div>
-                        </div>
-                        <span class="text-sm font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap" x-text="etaText"></span>
-                    </div>
-                    <p class="text-[11px] text-slate-400 dark:text-slate-500" x-text="`~${secPerPdf}s per PDF · ${nPdfs} PDF${nPdfs !== 1 ? 's' : ''} in queue`"></p>
-                </div>
-                <!-- Speed tier icon -->
-                <div class="flex items-center justify-center rounded-xl border border-slate-200/50 dark:border-white/8 bg-slate-50/60 dark:bg-white/3 p-4">
-                    <div class="text-center">
-                        <div class="text-3xl mb-1" x-text="nPdfs > 0 ? (secPerPdf <= 25 ? '⚡' : secPerPdf <= 60 ? '🔄' : '🐢') : '—'"></div>
-                        <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide" x-text="nPdfs > 0 ? tierLabel : 'No PDFs'"></p>
-                    </div>
-                </div>
-            </div>
-        </template>
-    </div>
-
-    <!-- ── Quick Actions ── -->
-    <div>
-        <h2 class="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Quick Actions</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-
-            <a href="{{ url('pipeline:folder_browser') }}"
-               class="glass rounded-2xl p-5 card-hover flex items-center gap-4 group border border-slate-200/30 dark:border-white/5">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-shadow shrink-0">
-                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-                    </svg>
-                </div>
-                <div class="min-w-0">
-                    <h3 class="text-slate-800 dark:text-slate-100 font-bold brand-font truncate">Browse Folders</h3>
-                    <p class="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Import PDFs from server</p>
-                </div>
-            </a>
-
-            <a href="{{ url('pipeline:upload') }}"
-               class="glass rounded-2xl p-5 card-hover flex items-center gap-4 group border border-slate-200/30 dark:border-white/5">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center shadow-md shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-shadow shrink-0">
-                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-                    </svg>
-                </div>
-                <div class="min-w-0">
-                    <h3 class="text-slate-800 dark:text-slate-100 font-bold brand-font truncate">Upload Files</h3>
-                    <p class="text-slate-500 dark:text-slate-400 text-xs mt-0.5">PDF · JSON · TXT</p>
-                </div>
-            </a>
-
-            <form method="post" action="{{ url('pipeline:start_run') }}"
-                  class="glass rounded-2xl p-5 card-hover flex items-center gap-4 group cursor-pointer border border-slate-200/30 dark:border-white/5">
-                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-                {% for doc_id in all_doc_ids %}
-                <input type="hidden" name="document_ids" value="{{ doc_id }}">
-                {% endfor %}
-                <button type="submit" class="flex items-center gap-4 w-full text-left" {% if not all_doc_ids %}disabled{% endif %}>
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-md shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-shadow shrink-0">
-                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                        </svg>
-                    </div>
-                    <div class="min-w-0">
-                        <h3 class="text-slate-800 dark:text-slate-100 font-bold brand-font truncate">Run All PDFs</h3>
-                        <p class="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{{ total_pdfs }} PDF{{ 's' if total_pdfs != 1 else '' }}</p>
-                    </div>
-                </button>
-            </form>
-
-            <form method="post" action="{{ url('pipeline:start_run_one') }}"
-                  class="glass rounded-2xl p-5 card-hover flex items-center gap-4 group cursor-pointer border border-slate-200/30 dark:border-white/5 {% if total_pdfs == 0 %}opacity-50{% endif %}">
-                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-                <button type="submit" class="flex items-center gap-4 w-full text-left" {% if total_pdfs == 0 %}disabled{% endif %}>
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-md shadow-emerald-500/20 group-hover:shadow-emerald-500/40 transition-shadow shrink-0">
-                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                        </svg>
-                    </div>
-                    <div class="min-w-0">
-                        <h3 class="text-slate-800 dark:text-slate-100 font-bold brand-font truncate">Test — First PDF</h3>
-                        <p class="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{% if total_pdfs %}Quick validation{% else %}Import a PDF first{% endif %}</p>
-                    </div>
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- ── Recent Runs / Activity Feed ── -->
-    {% if recent_runs %}
-    <div class="glass rounded-2xl border border-slate-200/30 dark:border-white/5 overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-200/40 dark:border-white/5 flex items-center justify-between">
-            <h2 class="text-base font-bold text-slate-700 dark:text-slate-200 brand-font flex items-center gap-2">
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Recent Activity
-            </h2>
-            <a href="{{ url('pipeline:run_list') }}" class="text-xs text-purple-600 dark:text-purple-400 hover:underline font-medium">View all →</a>
-        </div>
-        <div class="divide-y divide-slate-100 dark:divide-white/5">
-            {% for run in recent_runs %}
-            <a href="{{ url('pipeline:run_detail', run_id=run.id) }}"
-               class="flex items-center justify-between px-6 py-3.5 hover:bg-slate-50 dark:hover:bg-white/3 transition-colors group">
-                <div class="flex items-center gap-3 min-w-0">
-                    {% if run.status == 'completed' %}
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
-                    {% elif run.status == 'failed' %}
-                    <span class="w-2 h-2 rounded-full bg-red-400 shrink-0"></span>
-                    {% else %}
-                    <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse shrink-0"></span>
-                    {% endif %}
-                    <div class="min-w-0">
-                        <span class="text-sm text-slate-700 dark:text-slate-200 font-medium truncate block">{{ run.name or ("Run " ~ run.id.hex[:8]) }}</span>
-                        <span class="text-xs text-slate-400 dark:text-slate-500">{{ run.processed_pdfs }}/{{ run.total_pdfs }} PDFs · {{ run.total_mentions }} mentions</span>
-                    </div>
-                </div>
-                <div class="flex items-center gap-3 shrink-0 ml-4">
-                    <span class="text-xs text-slate-400 dark:text-slate-500 tabular-nums">{{ run.created_at.strftime('%b %d, %H:%M') }}</span>
-                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full border
-                        {% if run.status == 'completed' %}status-completed
-                        {% elif run.status == 'failed' %}status-failed
-                        {% else %}status-active{% endif %}">
-                        {{ run.get_status_display() }}
-                    </span>
-                    <svg class="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-purple-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                </div>
-            </a>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
+    </section>
 </div>
 {% endblock %}

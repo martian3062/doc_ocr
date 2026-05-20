@@ -27,6 +27,7 @@ import shutil
 import tempfile
 import logging
 from pathlib import Path
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -38,7 +39,7 @@ from django.views.decorators.http import require_POST
 
 from .forms import FolderImportForm, PDFUploadForm
 from .models import (
-    FinalRecord, Mention, NoteLedger, PDFDocument,
+    DocumentArtifact, FinalRecord, Mention, NoteLedger, PDFDocument,
     Patient, PipelineRun,
 )
 from .services.gpu_utils import gpu_info, system_info
@@ -70,7 +71,7 @@ def dashboard(request):
         "total_patients": Patient.objects.count(),
         "total_pdfs":     PDFDocument.objects.count(),
         "total_mentions": Mention.objects.count(),
-        "recent_runs":    PipelineRun.objects.all()[:5],
+        "recent_runs":    _recent_runs_queryset(),
         "active_run":     PipelineRun.objects.filter(
             status__in=_ACTIVE_STATUSES
         ).first(),
@@ -281,6 +282,20 @@ def folder_browser(request):
     folder_path = request.GET.get("path", str(settings.DOC_READER_DATA_DIR))
     error = None
     files = []
+    quick_paths = []
+    for candidate in [
+        Path(settings.DOC_READER_DATA_DIR),
+        Path("/data/django_only_10pdf_smoke"),
+        Path("/data/doc-reader-chemotherapy"),
+        Path("/data/drive-download-chenmotherapy data"),
+        Path("/data"),
+    ]:
+        if candidate.exists() and candidate.is_dir() and str(candidate) not in [item["path"] for item in quick_paths]:
+            candidate_path = str(candidate)
+            quick_paths.append({
+                "path": candidate_path,
+                "href": f"{request.path}?{urlencode({'path': candidate_path})}",
+            })
 
     try:
         p = Path(folder_path)
@@ -304,8 +319,30 @@ def folder_browser(request):
         "files":       files,
         "file_count":  len(files),
         "error":       error,
+        "quick_paths": quick_paths,
         "form":        FolderImportForm(initial={"folder_path": folder_path}),
     })
+
+
+def _recent_runs_queryset(limit: int = 5):
+    return (
+        PipelineRun.objects.annotate(
+            document_count=Count("documents", distinct=True),
+            patient_count=Count("documents__patient", distinct=True),
+            result_count=Count("finalrecord", distinct=True),
+            artifact_count=Count("artifacts", distinct=True),
+        )
+        .order_by("-created_at")[:limit]
+    )
+
+
+def recent_runs_partial(request):
+    """HTMX fragment for the dashboard recent-run rail."""
+    response = render(request, "pipeline/partials/recent_runs.html", {
+        "recent_runs": _recent_runs_queryset(),
+    })
+    response["Cache-Control"] = "no-store, max-age=0"
+    return response
 
 
 @require_POST
@@ -446,8 +483,21 @@ def patient_detail(request, patient_id):
 
 def run_list(request):
     """List all pipeline runs, most recent first."""
+    runs = PipelineRun.objects.annotate(
+        document_count=Count("documents", distinct=True),
+        patient_count=Count("documents__patient", distinct=True),
+        result_count=Count("finalrecord", distinct=True),
+        artifact_count=Count("artifacts", distinct=True),
+    ).order_by("-created_at")
+    all_doc_ids = list(PDFDocument.objects.values_list("id", flat=True))
+    active_count = PipelineRun.objects.filter(status__in=_ACTIVE_STATUSES).count()
+    completed_count = PipelineRun.objects.filter(status=PipelineRun.Status.COMPLETED).count()
     return render(request, "pipeline/run_list.html", {
-        "runs": PipelineRun.objects.all(),
+        "runs": runs,
+        "available_documents_count": len(all_doc_ids),
+        "all_doc_ids": all_doc_ids,
+        "active_count": active_count,
+        "completed_count": completed_count,
     })
 
 
@@ -456,11 +506,53 @@ def run_detail(request, run_id):
     Pipeline run detail page — shows status, progress, and log entries.
     Logs are capped at 50 most recent to keep the page responsive.
     """
-    run  = get_object_or_404(PipelineRun, id=run_id)
-    logs = run.logs.all()[:50]
+    run = get_object_or_404(PipelineRun, id=run_id)
+    logs = run.logs.all()[:80]
+    documents = list(
+        run.documents.select_related("patient").annotate(
+            page_rows=Count("pages", distinct=True),
+            note_rows=Count("notes", distinct=True),
+            mention_rows=Count("mentions", filter=Q(mentions__run=run), distinct=True),
+            artifact_rows=Count("artifacts", filter=Q(artifacts__run=run), distinct=True),
+        ).order_by("original_filename")
+    )
+    patients = list(
+        Patient.objects.filter(documents__runs=run).distinct().order_by("code")
+    )
+    final_records = {
+        item.patient_id: item
+        for item in FinalRecord.objects.filter(patient__in=patients).select_related("patient")
+    }
+    patient_rows = []
+    for patient in patients:
+        run_docs = [doc for doc in documents if doc.patient_id == patient.id]
+        run_mentions = Mention.objects.filter(patient=patient, run=run).count()
+        run_artifacts = DocumentArtifact.objects.filter(patient=patient, run=run).count()
+        final_record = final_records.get(patient.id)
+        patient_rows.append({
+            "patient": patient,
+            "documents": run_docs,
+            "mention_count": run_mentions,
+            "artifact_count": run_artifacts,
+            "final_record": final_record,
+            "has_result": bool(final_record),
+        })
+
+    totals = {
+        "documents": len(documents),
+        "patients": len(patients),
+        "mentions": Mention.objects.filter(run=run).count(),
+        "artifacts": DocumentArtifact.objects.filter(run=run).count(),
+        "results": sum(1 for item in patient_rows if item["has_result"]),
+        "pages": sum(int(getattr(doc, "page_rows", 0) or doc.page_count or 0) for doc in documents),
+        "notes": sum(int(getattr(doc, "note_rows", 0) or 0) for doc in documents),
+    }
     return render(request, "pipeline/run_detail.html", {
-        "run":  run,
+        "run": run,
         "logs": logs,
+        "documents": documents,
+        "patient_rows": patient_rows,
+        "totals": totals,
     })
 
 
@@ -579,6 +671,7 @@ def qc_summary(request):
 
     qc_rows = [
         {
+            "patient_id":    fr.patient_id,
             "patient_code":  fr.patient.code,
             "mention_count": fr.mention_count,
             "category_count":fr.category_count,

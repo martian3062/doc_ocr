@@ -147,11 +147,20 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
 
     try:
         # ── Skip if already processed ─────────────────────────────────────
-        # When SKIP_EXISTING is True and a FinalRecord already exists for
-        # this patient, return cached counts from the DB rather than
-        # re-extracting everything.  This makes re-runs near-instant for
-        # documents that were fully processed in a previous run.
-        if config.SKIP_EXISTING and FinalRecord.objects.filter(patient=patient).exists():
+        # When SKIP_EXISTING is True and a useful FinalRecord already exists
+        # for this patient, return cached counts from the DB rather than
+        # re-extracting everything. Empty records are treated as failed/stale
+        # runs and are rebuilt so they do not freeze the UI at zero mentions.
+        existing_final = FinalRecord.objects.filter(patient=patient).first()
+        has_cached_output = bool(
+            existing_final
+            and (
+                existing_final.mention_count > 0
+                or existing_final.category_count > 0
+                or Mention.objects.filter(patient=patient).exists()
+            )
+        )
+        if config.SKIP_EXISTING and has_cached_output:
             page_ct = doc.page_count
             note_ct = NoteLedger.objects.filter(document=doc).count()
             res_ct  = NoteLedger.objects.filter(document=doc, is_resolved=True).count()
@@ -165,7 +174,7 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
                 "status":       "skipped",
             })
             _log(run, "info", "extraction",
-                 f"{patient.code}: skipped (FinalRecord already exists)")
+                 f"{patient.code}: skipped (FinalRecord already has extracted output)")
             return result
 
         # ── 1a: PDF Extraction ────────────────────────────────────────────

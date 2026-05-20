@@ -1,423 +1,272 @@
 <!DOCTYPE html>
-<html lang="en" x-data="appShell()" :class="{ 'dark': darkMode }" x-init="initApp()">
+<html lang="en" x-data="appShell()" x-init="initApp()">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}doc-reader{% endblock %} — Clinical Document Reader</title>
-    <meta name="description" content="doc-reader clinical document pipeline with handwriting OCR, evidence-native extraction, and patient-level relation views.">
+    <title>{% block title %}doc-reader{% endblock %} - Clinical Document Reader</title>
+    <meta name="description" content="Django-only doc-reader clinical document review UI.">
 
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
-            darkMode: 'class',
             theme: {
                 extend: {
-                    colors: {
-                        brand: {
-                            50: '#F5F3FF', 100: '#EDE9FE', 200: '#DDD6FE',
-                            300: '#C4B5FD', 400: '#A78BFA', 500: '#8B5CF6',
-                            600: '#7C3AED', 700: '#6D28D9', 800: '#5B21B6', 900: '#4C1D95',
-                        }
-                    },
                     fontFamily: {
                         sans: ['Inter', 'ui-sans-serif', 'system-ui'],
-                        display: ['Space Grotesk', 'ui-sans-serif'],
+                        display: ['Outfit', 'Inter', 'ui-sans-serif'],
                     },
-                    animation: {
-                        'fade-in': 'fadeIn 0.3s ease-out',
-                        'slide-up': 'slideUp 0.4s ease-out',
-                        'slide-in-right': 'slideInRight 0.35s ease-out',
-                        'shimmer': 'shimmer 2s infinite',
-                        'pulse-soft': 'pulse 3s ease-in-out infinite',
-                    },
-                    keyframes: {
-                        fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
-                        slideUp: { from: { opacity: '0', transform: 'translateY(12px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
-                        slideInRight: { from: { opacity: '0', transform: 'translateX(24px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
-                        shimmer: { '0%': { backgroundPosition: '-200% center' }, '100%': { backgroundPosition: '200% center' } },
+                    boxShadow: {
+                        skyglass: '0 24px 80px rgba(61,169,230,0.18)',
+                        panel: '0 18px 54px rgba(45,178,240,0.20)',
                     }
                 }
             }
         }
     </script>
 
-    <!-- HTMX -->
-    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
-
-    <!-- Alpine.js Collapse plugin -->
+    <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
-    <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
-    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-
-    <!-- App JS (Alpine data definitions — must load before Alpine defers) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet">
     <script src="{{ static('js/app.js') }}"></script>
 
     <style>
-        *, *::before, *::after { box-sizing: border-box; }
-        * { font-family: 'Inter', sans-serif; }
-        h1, h2, h3, .brand-font { font-family: 'Space Grotesk', sans-serif; }
-
-        /* ── Light mode base ── */
+        :root {
+            --page-bg: #f7fcff;
+            --ink: #123047;
+            --muted: #557184;
+            --sky: #38bdf8;
+            --cyan: #67e8f9;
+            --border: rgba(93,188,239,0.32);
+            --surface: rgba(255,255,255,0.74);
+            --surface-strong: rgba(255,255,255,0.92);
+        }
+        * { box-sizing: border-box; }
         body {
-            background: linear-gradient(135deg, #FAF5FF 0%, #F5F3FF 25%, #EFF6FF 55%, #F0F9FF 80%, #FAF5FF 100%);
-            background-size: 400% 400%;
-            animation: gradientBG 18s ease infinite;
+            margin: 0;
             min-height: 100vh;
-            color: #1e293b;
+            color: var(--ink);
+            font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+            background:
+                radial-gradient(circle at 12% 10%, rgba(157,231,255,0.72), transparent 28%),
+                radial-gradient(circle at 82% 0%, rgba(209,247,255,0.85), transparent 26%),
+                linear-gradient(135deg, #ffffff 0%, #f5fbff 34%, #dff6ff 68%, #ffffff 100%);
+            -webkit-font-smoothing: antialiased;
         }
-
-        /* ── Dark mode base ── */
-        .dark body, html.dark {
-            background: linear-gradient(135deg, #0f0a1e 0%, #12111f 35%, #0d1424 65%, #0f0e1e 100%);
-            color: #e2e8f0;
+        .font-outfit, h1, h2, h3 { font-family: Outfit, Inter, ui-sans-serif, system-ui, sans-serif; }
+        .mesh-bg {
+            position: relative;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 8% 12%, rgba(107,216,255,0.44), transparent 26%),
+                radial-gradient(circle at 62% 0%, rgba(255,255,255,0.92), transparent 30%),
+                radial-gradient(circle at 95% 28%, rgba(127,236,255,0.34), transparent 24%),
+                linear-gradient(135deg, rgba(255,255,255,0.82), rgba(218,246,255,0.72));
         }
-        .dark body {
-            background: #0f0e1e;
-            animation: none;
+        .mesh-bg::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(115deg, transparent 0 28%, rgba(255,255,255,0.58) 35%, transparent 43%),
+                radial-gradient(circle, rgba(255,255,255,0.95) 0 1px, transparent 1.6px);
+            background-size: 260% 260%, 42px 42px;
+            opacity: 0.72;
+            animation: sparkle-drift 8s linear infinite;
         }
-
-        @keyframes gradientBG {
-            0%   { background-position: 0% 50%; }
-            50%  { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+        @keyframes sparkle-drift {
+            from { background-position: 180% 0, 0 0; }
+            to { background-position: -80% 0, 42px 42px; }
         }
-
-        /* ── Glass cards ── */
         .glass {
-            background: rgba(255,255,255,0.68);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-            border: 1px solid rgba(255,255,255,0.85);
-            box-shadow: 0 2px 16px rgba(139,92,246,0.06);
+            background: var(--surface);
+            backdrop-filter: blur(22px) saturate(185%);
+            -webkit-backdrop-filter: blur(22px) saturate(185%);
+            border: 1px solid var(--border);
+            box-shadow: 0 24px 80px rgba(61,169,230,0.18);
         }
-        .dark .glass {
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
-            box-shadow: 0 2px 16px rgba(0,0,0,0.4);
-        }
-
         .glass-strong {
-            background: rgba(255,255,255,0.88);
-            backdrop-filter: blur(28px);
-            -webkit-backdrop-filter: blur(28px);
-            border: 1px solid rgba(255,255,255,1);
-            box-shadow: 0 1px 0 rgba(139,92,246,0.08);
+            background: var(--surface-strong);
+            backdrop-filter: blur(26px) saturate(185%);
+            -webkit-backdrop-filter: blur(26px) saturate(185%);
+            border: 1px solid rgba(93,188,239,0.44);
+            box-shadow: 0 18px 54px rgba(45,178,240,0.20);
         }
-        .dark .glass-strong {
-            background: rgba(15,14,30,0.92);
-            border-bottom: 1px solid rgba(255,255,255,0.07);
-            box-shadow: none;
+        .panel-dark {
+            background: rgba(17,17,29,0.92);
+            border: 1px solid rgba(30,41,59,0.95);
+            color: #f8fafc;
         }
-
-        /* ── Glow helpers ── */
-        .glow-purple { box-shadow: 0 4px 28px rgba(139,92,246,0.12); }
-        .glow-blue   { box-shadow: 0 4px 28px rgba(96,165,250,0.12); }
-        .dark .glow-purple { box-shadow: 0 4px 28px rgba(139,92,246,0.22); }
-        .dark .glow-blue   { box-shadow: 0 4px 28px rgba(96,165,250,0.18); }
-
-        /* ── Gradient text ── */
-        .gradient-text {
-            background: linear-gradient(135deg, #7C3AED 0%, #4F46E5 40%, #0284C7 70%, #9333EA 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .panel-dark .muted { color: #94a3b8; }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+            border-radius: 0.9rem;
+            padding: 0.85rem 1rem;
+            color: #475569;
+            font-weight: 700;
+            transition: all .18s ease;
+            position: relative;
         }
-        .gradient-text-bold {
-            background: linear-gradient(135deg, #6D28D9 0%, #4338CA 50%, #0369A1 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .nav-item:hover, .nav-item.active {
+            color: #0369a1;
+            background: rgba(224,242,254,0.82);
+            box-shadow: 0 12px 34px rgba(56,189,248,0.18);
         }
-
-        /* ── Animations ── */
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(14px); }
-            to   { opacity: 1; transform: translateY(0); }
+        .nav-item.active::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0.65rem;
+            bottom: 0.65rem;
+            width: 4px;
+            border-radius: 0 999px 999px 0;
+            background: #38bdf8;
         }
-        @keyframes slideInRight {
-            from { opacity: 0; transform: translateX(24px); }
-            to   { opacity: 1; transform: translateX(0); }
+        .stat-card {
+            border-radius: 1rem;
+            border: 1px solid #1e293b;
+            background: #020617;
+            color: white;
+            padding: 1.25rem;
+        }
+        .schema-card {
+            border-radius: .75rem;
+            border: 1px solid rgba(30,41,59,.9);
+            background: rgba(2,6,23,.38);
+        }
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .5rem;
+            border-radius: .8rem;
+            background: linear-gradient(90deg, #ffffff, #bae6fd 45%, #22d3ee);
+            color: #082f49;
+            font-weight: 900;
+            box-shadow: 0 12px 34px rgba(56,189,248,.25);
+            transition: transform .18s ease, box-shadow .18s ease;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 18px 42px rgba(56,189,248,.34); }
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .5rem;
+            border-radius: .8rem;
+            border: 1px solid rgba(125,211,252,.7);
+            background: rgba(255,255,255,.74);
+            color: #0369a1;
+            font-weight: 900;
+        }
+        .status-completed { color: #047857; background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.28); }
+        .status-failed { color: #b91c1c; background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.28); }
+        .status-active { color: #0369a1; background: rgba(14,165,233,.14); border-color: rgba(14,165,233,.30); }
+        .shimmer {
+            background-size: 220% 100%;
+            animation: shimmer 1.8s linear infinite;
         }
         @keyframes shimmer {
-            0%   { background-position: -200% center; }
-            100% { background-position:  200% center; }
+            from { background-position: 120% 0; }
+            to { background-position: -120% 0; }
         }
-
-        .slide-up { animation: slideUp 0.4s ease-out both; }
-        .slide-in-right { animation: slideInRight 0.35s ease-out both; }
-
-        .shimmer {
-            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%);
-            background-size: 200% 100%;
-            animation: shimmer 2.2s infinite;
+        .slide-up { animation: slide-up .28s ease-out both; }
+        @keyframes slide-up {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        .dark .shimmer {
-            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
-            background-size: 200% 100%;
-        }
-
-        /* ── Skeleton loader ── */
-        .skeleton {
-            background: linear-gradient(90deg, rgba(203,213,225,0.5) 25%, rgba(226,232,240,0.7) 50%, rgba(203,213,225,0.5) 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.4s infinite;
-            border-radius: 0.5rem;
-        }
-        .dark .skeleton {
-            background: linear-gradient(90deg, rgba(51,65,85,0.5) 25%, rgba(71,85,105,0.5) 50%, rgba(51,65,85,0.5) 75%);
-            background-size: 200% 100%;
-        }
-
-        /* ── Nav link ── */
-        .nav-link {
-            position: relative;
-            transition: color 0.25s ease;
-            color: #475569;
-        }
-        .dark .nav-link { color: #94a3b8; }
-        .nav-link::after {
-            content: '';
-            position: absolute;
-            bottom: -2px; left: 50%;
-            width: 0; height: 2px;
-            background: linear-gradient(90deg, #A78BFA, #93C5FD);
-            transition: all 0.25s ease;
-            transform: translateX(-50%);
-            border-radius: 1px;
-        }
-        .nav-link:hover::after, .nav-link.active::after { width: 80%; }
-        .nav-link:hover, .nav-link.active { color: #6D28D9; }
-        .dark .nav-link:hover, .dark .nav-link.active { color: #a78bfa; }
-
-        /* ── Card hover ── */
-        .card-hover { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
-        .card-hover:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 30px rgba(139,92,246,0.1);
-        }
-        .dark .card-hover:hover {
-            box-shadow: 0 12px 30px rgba(139,92,246,0.2);
-        }
-
-        /* ── Scrollbar ── */
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(167,139,250,0.35); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.55); }
-
-        /* ── Selection ── */
-        ::selection { background: rgba(167,139,250,0.28); color: #4C1D95; }
-
-        /* ── Step tracker ── */
-        .step-done   { background: #10b981; border-color: #10b981; }
-        .step-active { background: #8b5cf6; border-color: #8b5cf6; animation: pulse 1.5s ease-in-out infinite; }
-        .step-wait   { background: transparent; border-color: #cbd5e1; }
-        .dark .step-wait { border-color: #334155; }
-
-        /* ── Pipeline status colors light/dark ── */
-        .status-completed { color: #059669; background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.25); }
-        .status-failed    { color: #dc2626; background: rgba(239,68,68,0.1);  border-color: rgba(239,68,68,0.25); }
-        .status-active    { color: #7c3aed; background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.25); }
-        .dark .status-completed { color: #34d399; }
-        .dark .status-failed    { color: #f87171; }
-        .dark .status-active    { color: #a78bfa; }
-
-        /* ── Toast ── */
-        .toast-enter { animation: slideInRight 0.35s ease-out both; }
-        .toast-leave { animation: fadeOut 0.25s ease-in both; }
-        @keyframes fadeOut { to { opacity: 0; transform: translateX(12px); } }
-
-        /* ── JSON viewer ── */
-        .json-key   { color: #7c3aed; }
-        .json-str   { color: #059669; }
-        .json-num   { color: #d97706; }
-        .json-bool  { color: #2563eb; }
-        .json-null  { color: #94a3b8; }
-        .dark .json-key  { color: #c084fc; }
-        .dark .json-str  { color: #34d399; }
-        .dark .json-num  { color: #fbbf24; }
-        .dark .json-bool { color: #60a5fa; }
-
-        /* ── Print ── */
-        @media print {
-            nav, footer, .no-print { display: none !important; }
-            body { background: white; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #9adffb; border-radius: 999px; }
+        ::selection { background: #6ed7ff; color: #073047; }
+        [x-cloak] { display: none !important; }
+        @media (max-width: 1023px) {
+            .app-shell { grid-template-columns: 1fr !important; }
+            .sidebar { position: sticky; top: 0; height: auto; width: 100%; z-index: 40; }
+            .sidebar nav { display: flex; overflow-x: auto; padding-bottom: .5rem; }
+            .sidebar-footer { display: none; }
         }
     </style>
 </head>
-<body class="antialiased" x-cloak>
-
-    <!-- Ambient orbs (light only) -->
-    <div class="fixed inset-0 overflow-hidden pointer-events-none -z-10 dark:opacity-20" aria-hidden="true">
-        <div class="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-purple-300/35 blur-[110px] animate-[pulse_9s_ease-in-out_infinite]"></div>
-        <div class="absolute top-1/3 -left-20 w-80 h-80 rounded-full bg-blue-300/35 blur-[110px] animate-[pulse_11s_ease-in-out_infinite]"></div>
-        <div class="absolute bottom-0 right-1/4 w-64 h-64 rounded-full bg-pink-300/25 blur-[90px] animate-[pulse_13s_ease-in-out_infinite]"></div>
-    </div>
-
-    <!-- ── Navigation ── -->
-    <nav class="sticky top-0 z-50 glass-strong border-b border-white/10 dark:border-white/5">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-
-            <!-- Logo -->
-            <a href="{{ url('pipeline:dashboard') }}" class="flex items-center gap-2.5 shrink-0 group">
-                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-md shadow-purple-500/25 group-hover:shadow-purple-500/45 transition-shadow">
-                    <svg class="w-4.5 h-4.5 text-white" style="width:18px;height:18px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                    </svg>
+<body>
+    <div class="app-shell grid min-h-screen grid-cols-[260px_1fr]">
+        <aside class="sidebar border-r border-sky-200/70 bg-white/70 shadow-[18px_0_70px_rgba(67,181,232,0.16)] backdrop-blur-2xl lg:sticky lg:top-0 lg:h-screen">
+            <div class="flex items-center gap-3 p-6">
+                <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-white via-sky-200 to-cyan-400 shadow-[0_10px_28px_rgba(56,189,248,0.3)]">
+                    <svg class="h-5 w-5 text-sky-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7zm4 3h8M8 14h5"/></svg>
                 </div>
-                <span class="text-base font-bold gradient-text-bold brand-font hidden sm:block">doc-reader</span>
-            </a>
-
-            <!-- Nav links -->
-            <div class="flex items-center gap-0.5 overflow-x-auto scrollbar-none">
-                <a href="{{ url('pipeline:dashboard') }}"     class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Dashboard</a>
-                <a href="{{ url('pipeline:patient_list') }}"  class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Patients</a>
-                <a href="{{ url('pipeline:folder_browser') }}" class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Folders</a>
-                <a href="{{ url('pipeline:upload') }}"        class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Upload</a>
-                <a href="{{ url('pipeline:run_list') }}"      class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">Runs</a>
-                <a href="{{ url('pipeline:qc_summary') }}"    class="nav-link px-3 py-1.5 text-sm rounded-lg hover:bg-purple-50/60 dark:hover:bg-white/5 whitespace-nowrap transition-colors">QC</a>
+                <a href="{{ url('pipeline:dashboard') }}" class="font-outfit bg-gradient-to-r from-sky-950 via-sky-500 to-cyan-300 bg-clip-text text-xl font-black tracking-tight text-transparent">doc-reader</a>
             </div>
 
-            <!-- Right side: GPU + dark toggle -->
-            <div class="flex items-center gap-2 shrink-0">
-                <!-- GPU badge -->
-                <div id="gpu-badge"
-                     hx-get="{{ url('pipeline:api_gpu_status') }}"
-                     hx-trigger="every 12s"
-                     hx-swap="innerHTML">
-                    {% if gpu is defined and gpu.available %}
-                    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20">
-                        <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
-                        <span class="text-xs text-purple-600 dark:text-purple-300 font-medium">GPU</span>
+            <nav class="space-y-2 px-4">
+                <a href="{{ url('pipeline:dashboard') }}" class="nav-item" data-path="/">
+                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 13h6V4H4v9zm10 7h6V4h-6v16zM4 20h6v-3H4v3z"/></svg>
+                    <span>Overview</span>
+                </a>
+                <a href="{{ url('pipeline:patient_list') }}" class="nav-item" data-path="/patients/">
+                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m0-4a4 4 0 100-8 4 4 0 000 8zm8 0a4 4 0 100-8 4 4 0 000 8z"/></svg>
+                    <span>Patients</span>
+                </a>
+                <a href="{{ url('pipeline:run_list') }}" class="nav-item" data-path="/runs/">
+                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <span>Runs</span>
+                </a>
+                <a href="{{ url('pipeline:folder_browser') }}" class="nav-item" data-path="/folder/">
+                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+                    <span>Documents</span>
+                </a>
+                <a href="{{ url('pipeline:upload') }}" class="nav-item" data-path="/upload/">
+                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    <span>Upload</span>
+                </a>
+                <a href="{{ url('pipeline:qc_summary') }}" class="nav-item" data-path="/qc/">
+                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>QC</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer absolute bottom-0 left-0 right-0 p-4">
+                <div class="glass rounded-2xl p-4">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full border border-sky-200 bg-sky-100/80">
+                            <svg class="h-5 w-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 7h10v10H7z"/></svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-slate-700">Django-only</p>
+                            <p class="text-xs font-semibold text-slate-500">CPU + Groq runtime</p>
+                        </div>
                     </div>
-                    {% else %}
-                    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/8">
-                        <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                        <span class="text-xs text-slate-500 dark:text-slate-400">CPU</span>
-                    </div>
-                    {% endif %}
                 </div>
+            </div>
+        </aside>
 
-                <!-- Dark mode toggle -->
-                <button @click="toggleDark()"
-                        class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/8 hover:bg-slate-200 dark:hover:bg-white/12 border border-slate-200 dark:border-white/8 transition-colors"
-                        :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
-                    <svg x-show="!darkMode" class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
-                    </svg>
-                    <svg x-show="darkMode" class="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-                    </svg>
-                </button>
-            </div>
-        </div>
-    </nav>
-
-    <!-- ── Toast container ── -->
-    <div x-data
-         class="fixed top-4 right-4 z-[100] flex flex-col gap-2 w-80 pointer-events-none"
-         aria-live="polite">
-        <template x-for="toast in $store.toasts.items" :key="toast.id">
-            <div class="toast-enter pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium"
-                 :class="{
-                     'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200': toast.type === 'info',
-                     'bg-emerald-50 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200': toast.type === 'success',
-                     'bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200': toast.type === 'error',
-                     'bg-amber-50 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200': toast.type === 'warning',
-                 }">
-                <!-- Icon -->
-                <span class="mt-0.5 shrink-0">
-                    <svg x-show="toast.type==='success'" class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
-                    <svg x-show="toast.type==='error'" class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
-                    <svg x-show="toast.type==='warning'" class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-                    <svg x-show="toast.type==='info'" class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </span>
-                <span x-text="toast.message" class="flex-1 leading-snug"></span>
-                <button @click="$store.toasts.remove(toast.id)" class="shrink-0 opacity-50 hover:opacity-100 transition-opacity">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
-        </template>
-    </div>
-
-    <!-- ── Main Content ── -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        {% if messages %}
-        <div class="mb-6 space-y-2">
-            {% for message in messages %}
-            <div class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm border
-                {% if message.tags == 'error' %}bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800
-                {% elif message.tags == 'success' %}bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800
-                {% else %}bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700{% endif %}">
-                {{ message }}
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-        {% block content %}{% endblock %}
-    </main>
-
-    <!-- ── Footer ── -->
-    <footer class="mt-16 border-t border-slate-200/70 dark:border-white/5 py-5">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-3">
-            <p class="text-xs text-slate-400 dark:text-slate-500">doc-reader pipeline — advanced clinical document reader</p>
-            <div class="flex items-center gap-4">
-                <p class="text-xs text-slate-400 dark:text-slate-500">Qwen 2.5 · Lossless-first + LLM rescue</p>
-                <kbd class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-white/8 font-mono">
-                    <span class="text-[9px]">⌘</span>K search
-                </kbd>
-            </div>
-        </div>
-    </footer>
-
-    <!-- ── Command spotlight (⌘K / /) ── -->
-    <div x-data
-         x-show="$store.spotlight.open"
-         x-cloak
-         @keydown.escape.window="$store.spotlight.close()"
-         class="fixed inset-0 z-[200] flex items-start justify-center pt-24 px-4"
-         style="display:none">
-        <div class="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" @click="$store.spotlight.close()"></div>
-        <div class="relative w-full max-w-lg glass dark:bg-slate-900/95 rounded-2xl shadow-2xl border border-white/60 dark:border-white/10 overflow-hidden slide-up">
-            <div class="flex items-center gap-3 px-5 py-4 border-b border-slate-200/50 dark:border-white/8">
-                <svg class="w-5 h-5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                <input id="spotlight-input" type="text" placeholder="Search patients, runs, pages…"
-                       class="flex-1 bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 text-sm focus:outline-none"
-                       @input="$store.spotlight.query = $event.target.value"
-                       :value="$store.spotlight.query">
-                <kbd class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/8 text-slate-400 font-mono border border-slate-200 dark:border-white/10">ESC</kbd>
-            </div>
-            <div class="py-2 max-h-72 overflow-y-auto">
-                <p class="px-5 py-3 text-xs text-slate-400 dark:text-slate-500">Quick navigation</p>
-                <a href="{{ url('pipeline:dashboard') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
-                    <svg class="w-4 h-4 text-purple-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-                    Dashboard
-                </a>
-                <a href="{{ url('pipeline:patient_list') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
-                    <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                    Patients
-                </a>
-                <a href="{{ url('pipeline:upload') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
-                    <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                    Upload Files
-                </a>
-                <a href="{{ url('pipeline:run_list') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
-                    <svg class="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
-                    Pipeline Runs
-                </a>
-                <a href="{{ url('pipeline:qc_summary') }}" @click="$store.spotlight.close()" class="flex items-center gap-3 px-5 py-2.5 hover:bg-purple-50 dark:hover:bg-white/5 transition-colors text-sm text-slate-700 dark:text-slate-300">
-                    <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    QC Summary
-                </a>
-            </div>
+        <div class="min-w-0">
+            <main class="mx-auto max-w-[1760px] px-5 py-6 lg:px-8">
+                {% if messages %}
+                <div class="mb-6 space-y-2">
+                    {% for message in messages %}
+                    <div class="rounded-xl border border-sky-200 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 shadow-skyglass">{{ message }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% block content %}{% endblock %}
+            </main>
         </div>
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const path = window.location.pathname;
+            document.querySelectorAll('.nav-item').forEach((el) => {
+                const target = el.getAttribute('data-path');
+                if ((target === '/' && path === '/') || (target !== '/' && path.startsWith(target))) {
+                    el.classList.add('active');
+                }
+            });
+        });
+    </script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

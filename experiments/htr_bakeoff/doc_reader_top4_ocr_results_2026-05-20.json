@@ -1,0 +1,643 @@
+{
+  "settings": {
+    "pdf_dir": "/data/django_only_10pdf_smoke",
+    "limit_reports": 5,
+    "max_pages": 2,
+    "max_crops": 4,
+    "run_cloud": true,
+    "run_local_models": false,
+    "run_paddle": false,
+    "local_hf_enabled": false,
+    "paddle_device": "cpu"
+  },
+  "reports": [
+    "2 Rupali Katyal - UHID 35955.pdf",
+    "2 files Umesh kumar - UHID 35363.pdf",
+    "2 files kaushal devi - 34530.pdf",
+    "3 files Kusum Jain - 34295.pdf",
+    "Abdul Aleem - UHID 32553.pdf"
+  ],
+  "crop_probes": {
+    "2 Rupali Katyal - UHID 35955.pdf": [
+      {
+        "report": "2 Rupali Katyal - UHID 35955.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          10.98,
+          112.07,
+          538.02,
+          808.32
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse wlll lnltlal the time, medldnis and Injections administered"
+      },
+      {
+        "report": "2 Rupali Katyal - UHID 35955.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          158.81,
+          112.07,
+          538.02,
+          808.32
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse wlll lnltlal the time, medldnis and Injections administered"
+      },
+      {
+        "report": "2 Rupali Katyal - UHID 35955.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          10.98,
+          101.04,
+          538.02,
+          799.9
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "2 Rupali Katyal - UHID 35955.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          98.82,
+          134.72,
+          538.02,
+          740.96
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "2 Rupali Katyal - UHID 35955.pdf",
+        "page_num": 2,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          168.4,
+          551.74,
+          774.64
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "2 Rupali Katyal - UHID 35955.pdf",
+        "page_num": 2,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          202.08,
+          551.74,
+          437.84
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "2 Rupali Katyal - UHID 35955.pdf",
+        "page_num": 2,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          404.16,
+          551.74,
+          639.92
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "2 Rupali Katyal - UHID 35955.pdf",
+        "page_num": 2,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          572.56,
+          551.74,
+          799.9
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      }
+    ],
+    "2 files Umesh kumar - UHID 35363.pdf": [
+      {
+        "report": "2 files Umesh kumar - UHID 35363.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          11.34,
+          118.06,
+          555.66,
+          808.32
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse wlll lnltlal the time, medicines and Injections administered"
+      },
+      {
+        "report": "2 files Umesh kumar - UHID 35363.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          168.91,
+          118.06,
+          555.66,
+          808.32
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse wlll lnltlal the time, medicines and Injections administered"
+      },
+      {
+        "report": "2 files Umesh kumar - UHID 35363.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          11.34,
+          101.04,
+          555.66,
+          799.9
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "2 files Umesh kumar - UHID 35363.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          102.06,
+          134.72,
+          555.66,
+          740.96
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "2 files Umesh kumar - UHID 35363.pdf",
+        "page_num": 5,
+        "role": "orders",
+        "bbox": [
+          11.3,
+          119.42,
+          553.7,
+          808.32
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse wlll lnltlal the time, medicines and Injections administered"
+      },
+      {
+        "report": "2 files Umesh kumar - UHID 35363.pdf",
+        "page_num": 5,
+        "role": "orders",
+        "bbox": [
+          161.83,
+          119.42,
+          553.7,
+          808.32
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse wlll lnltlal the time, medicines and Injections administered"
+      },
+      {
+        "report": "2 files Umesh kumar - UHID 35363.pdf",
+        "page_num": 5,
+        "role": "orders",
+        "bbox": [
+          11.3,
+          101.04,
+          553.7,
+          799.9
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "2 files Umesh kumar - UHID 35363.pdf",
+        "page_num": 5,
+        "role": "orders",
+        "bbox": [
+          101.7,
+          134.72,
+          553.7,
+          740.96
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      }
+    ],
+    "2 files kaushal devi - 34530.pdf": [
+      {
+        "report": "2 files kaushal devi - 34530.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          11.9,
+          67.47,
+          583.1,
+          800.64
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "staff Nurse Wiil lnltla1 the time, medicines and lnJecttons adminlsteN!1J"
+      },
+      {
+        "report": "2 files kaushal devi - 34530.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          197.32,
+          67.47,
+          583.1,
+          800.64
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "staff Nurse Wiil lnltla1 the time, medicines and lnJecttons adminlsteN!1J"
+      },
+      {
+        "report": "2 files kaushal devi - 34530.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          11.9,
+          100.08,
+          583.1,
+          792.3
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "2 files kaushal devi - 34530.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          107.1,
+          133.44,
+          583.1,
+          733.92
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "2 files kaushal devi - 34530.pdf",
+        "page_num": 5,
+        "role": "orders",
+        "bbox": [
+          11.5,
+          105.67,
+          563.5,
+          808.32
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse will lnltlal the time, medicines and Injections administered"
+      },
+      {
+        "report": "2 files kaushal devi - 34530.pdf",
+        "page_num": 5,
+        "role": "orders",
+        "bbox": [
+          170.33,
+          105.67,
+          563.5,
+          808.32
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse will lnltlal the time, medicines and Injections administered"
+      },
+      {
+        "report": "2 files kaushal devi - 34530.pdf",
+        "page_num": 5,
+        "role": "orders",
+        "bbox": [
+          11.5,
+          101.04,
+          563.5,
+          799.9
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "2 files kaushal devi - 34530.pdf",
+        "page_num": 5,
+        "role": "orders",
+        "bbox": [
+          103.5,
+          134.72,
+          563.5,
+          740.96
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      }
+    ],
+    "3 files Kusum Jain - 34295.pdf": [
+      {
+        "report": "3 files Kusum Jain - 34295.pdf",
+        "page_num": 1,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          168.4,
+          551.74,
+          774.64
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "3 files Kusum Jain - 34295.pdf",
+        "page_num": 1,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          202.08,
+          551.74,
+          437.84
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "3 files Kusum Jain - 34295.pdf",
+        "page_num": 1,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          404.16,
+          551.74,
+          639.92
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "3 files Kusum Jain - 34295.pdf",
+        "page_num": 1,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          572.56,
+          551.74,
+          799.9
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "3 files Kusum Jain - 34295.pdf",
+        "page_num": 2,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          168.4,
+          551.74,
+          774.64
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "3 files Kusum Jain - 34295.pdf",
+        "page_num": 2,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          202.08,
+          551.74,
+          437.84
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "3 files Kusum Jain - 34295.pdf",
+        "page_num": 2,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          404.16,
+          551.74,
+          639.92
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "3 files Kusum Jain - 34295.pdf",
+        "page_num": 2,
+        "role": "orders",
+        "bbox": [
+          112.6,
+          572.56,
+          551.74,
+          799.9
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      }
+    ],
+    "Abdul Aleem - UHID 32553.pdf": [
+      {
+        "report": "Abdul Aleem - UHID 32553.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          11.9,
+          81.19,
+          583.1,
+          783.36
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse will Initial the time, medldnes and Injections administered"
+      },
+      {
+        "report": "Abdul Aleem - UHID 32553.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          190.6,
+          81.19,
+          583.1,
+          783.36
+        ],
+        "source_backend": "word_anchor",
+        "source_text": "Staff Nurse will Initial the time, medldnes and Injections administered"
+      },
+      {
+        "report": "Abdul Aleem - UHID 32553.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          11.9,
+          97.92,
+          583.1,
+          775.2
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "Abdul Aleem - UHID 32553.pdf",
+        "page_num": 3,
+        "role": "orders",
+        "bbox": [
+          107.1,
+          130.56,
+          583.1,
+          718.08
+        ],
+        "source_backend": "chart_page_signal",
+        "source_text": "staff nurse medicines injections chart"
+      },
+      {
+        "report": "Abdul Aleem - UHID 32553.pdf",
+        "page_num": 1,
+        "role": "orders",
+        "bbox": [
+          119.0,
+          168.4,
+          583.1,
+          774.64
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "Abdul Aleem - UHID 32553.pdf",
+        "page_num": 1,
+        "role": "orders",
+        "bbox": [
+          119.0,
+          202.08,
+          583.1,
+          437.84
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "Abdul Aleem - UHID 32553.pdf",
+        "page_num": 1,
+        "role": "orders",
+        "bbox": [
+          119.0,
+          404.16,
+          583.1,
+          639.92
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      },
+      {
+        "report": "Abdul Aleem - UHID 32553.pdf",
+        "page_num": 1,
+        "role": "orders",
+        "bbox": [
+          119.0,
+          572.56,
+          583.1,
+          799.9
+        ],
+        "source_backend": "fallback_zone",
+        "source_text": ""
+      }
+    ]
+  },
+  "approach_results": [
+    {
+      "rank": 1,
+      "approach": "paddleocr_ppocrv5",
+      "status": "not_installed",
+      "fit_for_project": "best_router_when_installed",
+      "notes": "Use for detection/layout/table boxes; not present in django-only image.",
+      "seconds": 0.0
+    },
+    {
+      "rank": 3,
+      "approach": "htr_vt",
+      "status": "repo_missing",
+      "fit_for_project": "research_only",
+      "notes": "Repo/checkpoints are not deployed in the django-only image.",
+      "seconds": 0.0
+    },
+    {
+      "rank": 2,
+      "approach": "trocr_large_handwritten",
+      "status": "not_installed",
+      "fit_for_project": "medium_for_cropped_lines",
+      "notes": "Need torch+transformers; 40 crop candidates are ready.",
+      "seconds": 0.0
+    },
+    {
+      "rank": 4,
+      "approach": "full_page_cloud_vlm",
+      "status": "ok",
+      "fit_for_project": "best_current_production_fit",
+      "notes": "5/5 crops returned text; 13 drug hit(s).",
+      "seconds": 9.64,
+      "cloud_rows": [
+        {
+          "report": "2 Rupali Katyal - UHID 35955.pdf",
+          "page_num": 3,
+          "source_backend": "word_anchor",
+          "text": "100mL NS d Inj: PALN [?] IVH [?]\nInj: PAN 40MG IV (NICORTS) 12/1/2000\n250mL NS d Inj: HETR [?] FL 200mcg (NIHB) 12/1 400\n500mL NS + Inj: PACKETAXEL 240mg (1V @ 1HR) 1:45pm\n250mL 5% D + Inj: CARBOPLATIN 450mg (NS [?] 8:00pm",
+          "text_chars": 222,
+          "drug_hits": 2,
+          "confidence": 0.0
+        },
+        {
+          "report": "2 files Umesh kumar - UHID 35363.pdf",
+          "page_num": 3,
+          "source_backend": "word_anchor",
+          "text": "NS 100 ML IV (1Smts)\nTus Pavo X IVAIL 10 2:30Pm\nTus PONTODAC 30MG IV\nTrs Nivo wMAB 40mg NS 250ML IL (IHRS)\nTwo NAB-PACLITAX 280mg NS 250ML IL (IHRS)\nTrs CARBOPLATIN 420mg 5/0Ex 250ML IV (30mts)",
+          "text_chars": 193,
+          "drug_hits": 2,
+          "confidence": 0.0
+        },
+        {
+          "report": "2 files kaushal devi - 34530.pdf",
+          "page_num": 3,
+          "source_backend": "word_anchor",
+          "text": "CAP- Emend 125 MG STAT 12m\nNS 500ML IV (15mL)\nIns Panox IV q12\nIns Pantodac 40MG IV\nIns Trastuzumab 264 mg NS 250ML IV (1HRS)\nIns Docetaxel 95 mg NS 500ML IV (90mins)\nIns Carboplatin 350MG 5/DEX 250ML (30mL)\nIns Peg-Filgrastim 6MG S/C",
+          "text_chars": 234,
+          "drug_hits": 5,
+          "confidence": 0.0
+        },
+        {
+          "report": "3 files Kusum Jain - 34295.pdf",
+          "page_num": 1,
+          "source_backend": "fallback_zone",
+          "text": "UHID: V01034295 IP No: IP029869\nRE WARD Bed: DAY CARE ROOM15 Sponsor:\n: Relation: Admitted By:\n: Emergency Address:\n+917500873240 Alternate No: +917500873240\nCase: Yes/No Patient Source: Police Station:\nformantion given: Discharge:-*Stable *Improve *Ref *DORB *LAMA *Expired\nof Discharge: Hospital Stay:\nmarks: ICD:\n: *SA *LA *GA *Others\nmation: *Live *still Birth *Twins *Normal Delivery *LSCS *Fema",
+          "text_chars": 476,
+          "drug_hits": 0,
+          "confidence": 0.0
+        },
+        {
+          "report": "Abdul Aleem - UHID 32553.pdf",
+          "page_num": 3,
+          "source_backend": "word_anchor",
+          "text": "DRUGS\n100ML NS INJ PALNODSET NAIL\nNI! DEXA 16 MG IV (NIGAM) 12/40\nINJ: PAN 40 MG IV\n250 ML NS + INJ: PACCITAXEL 120 MG IV (1HRS)\n250 ML 5% D + INJ: CARBOPLATIN 200 MG (IV 30 MINS)",
+          "text_chars": 179,
+          "drug_hits": 4,
+          "confidence": 0.0
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "report_count": 5,
+    "total_crop_candidates": 40,
+    "anchor_hit_reports": 4,
+    "fallback_only_reports": [
+      "3 files Kusum Jain - 34295.pdf"
+    ],
+    "recommended_now": "full_page_cloud_vlm + deterministic medicine anchors",
+    "recommended_next_install": "PaddleOCR/PP-OCRv5 for layout detection, then TrOCR only for clean line crops"
+  }
+}

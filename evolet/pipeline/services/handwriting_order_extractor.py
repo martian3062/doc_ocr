@@ -27,7 +27,12 @@ logger = logging.getLogger("pipeline")
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
-def extract_handwriting_order_artifacts(pdf_path: str, artifacts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def extract_handwriting_order_artifacts(
+    pdf_path: str,
+    artifacts: List[Dict[str, Any]],
+    *,
+    page_rows: List[Dict[str, Any]] | None = None,
+) -> List[Dict[str, Any]]:
     if not config.ENABLE_HANDWRITING_ORDER_EXTRACTOR:
         return []
     if not config.ENABLE_GROQ_VISION_OCR:
@@ -38,13 +43,16 @@ def extract_handwriting_order_artifacts(pdf_path: str, artifacts: List[Dict[str,
 
     reference = get_medocr_reference_context()
     out: List[Dict[str, Any]] = []
+    page_text_map = {
+        int(row.get("page_num") or 0): normalize_text(row.get("text") or "")
+        for row in (page_rows or [])
+    }
     doc = fitz.open(pdf_path)
     try:
-        page_limit = min(len(doc), max(1, config.HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT))
-        for page_index in range(page_limit):
+        for page_index in _target_page_indexes(doc, artifacts, page_text_map):
             page = doc[page_index]
             page_num = page_index + 1
-            candidates = _candidate_boxes(page, artifacts, page_num)
+            candidates = _candidate_boxes(page, artifacts, page_num, page_text=page_text_map.get(page_num, ""))
             for order, (role, bbox, source) in enumerate(candidates[: config.HANDWRITING_ORDER_MAX_CROPS_PER_PAGE], start=1):
                 try:
                     crop = _render_crop(page, bbox)
@@ -77,12 +85,78 @@ def extract_handwriting_order_artifacts(pdf_path: str, artifacts: List[Dict[str,
     return out
 
 
-def _candidate_boxes(page, artifacts: List[Dict[str, Any]], page_num: int) -> List[Tuple[str, List[float], Dict[str, Any]]]:
+def _target_page_indexes(doc, artifacts: List[Dict[str, Any]], page_text_map: Dict[int, str]) -> List[int]:
+    max_pages = max(1, config.HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT)
+    artifact_text_by_page: Dict[int, List[str]] = {}
+    for artifact in artifacts:
+        page_num = int(artifact.get("page_num") or 0)
+        if page_num <= 0:
+            continue
+        text = normalize_text(artifact.get("normalized_text") or artifact.get("text") or "")
+        if text:
+            artifact_text_by_page.setdefault(page_num, []).append(text)
+
+    scored: List[Tuple[int, int]] = []
+    for page_index in range(len(doc)):
+        page_num = page_index + 1
+        text_parts = [page_text_map.get(page_num, "")]
+        text_parts.extend(artifact_text_by_page.get(page_num, []))
+        if not any(text_parts):
+            try:
+                text_parts.append(normalize_text(doc[page_index].get_text("text") or ""))
+            except Exception:
+                pass
+        text = " ".join(text_parts)
+        score = _page_target_score(text)
+        if score:
+            scored.append((score, page_index))
+
+    selected = [page_index for _, page_index in sorted(scored, key=lambda item: (-item[0], item[1]))[:max_pages]]
+    if len(selected) < max_pages:
+        selected_set = set(selected)
+        for page_index in range(len(doc)):
+            if page_index not in selected_set:
+                selected.append(page_index)
+            if len(selected) >= max_pages:
+                break
+    return selected
+
+
+def _page_target_score(text: str) -> int:
+    lowered = normalize_text(text).lower()
+    if not lowered:
+        return 0
+    score = 0
+    if _has_chart_signal(lowered):
+        score += 120
+    if "staff nurse" in lowered:
+        score += 35
+    if re.search(r"\b(?:medicine|medicines|medication|injection|injections|drug|drugs)\b", lowered):
+        score += 35
+    if _has_order_signal(lowered):
+        score += 30
+    if re.search(r"\b(?:chemotherapy|chemo|cycle|day\s*[0-9]|premedication|pre-medication)\b", lowered):
+        score += 25
+    if re.search(r"\b(?:trastuzumab|docetaxel|paclitaxel|carboplatin|cisplatin|palono|pantop|ondansetron|dexamethasone)\b", lowered):
+        score += 35
+    if re.search(r"\b(?:case\s*sheet|progress\s*sheet|treatment\s*chart|order\s*sheet|doctor'?s?\s*order)\b", lowered):
+        score += 20
+    return score
+
+
+def _candidate_boxes(page, artifacts: List[Dict[str, Any]], page_num: int, *, page_text: str = "") -> List[Tuple[str, List[float], Dict[str, Any]]]:
     width = float(page.rect.width)
     height = float(page.rect.height)
     candidates: List[Tuple[str, List[float], Dict[str, Any]]] = []
     seen = set()
-    page_texts: List[str] = []
+    page_texts: List[str] = [page_text] if page_text else []
+
+    for role, bbox, source in _word_anchor_zones(page, width, height):
+        key = tuple(round(v / 8) for v in bbox)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append((role, bbox, source))
 
     for artifact in artifacts:
         if int(artifact.get("page_num") or 0) != page_num:
@@ -331,13 +405,17 @@ def _has_order_signal(text: str) -> bool:
 def _has_chart_signal(text: str) -> bool:
     lowered = text.lower()
     return (
-        "staff nurse" in lowered
-        and ("medicine" in lowered or "medicines" in lowered or "injection" in lowered or "injections" in lowered)
+        ("staff nurse" in lowered or "treatment chart" in lowered or "doctor order" in lowered or "doctor's order" in lowered)
+        and ("medicine" in lowered or "medicines" in lowered or "medication" in lowered or "injection" in lowered or "injections" in lowered or "order" in lowered)
     )
 
 
 def _priority(role: str, source: Dict[str, Any]) -> int:
     text = str(source.get("source_text") or "").lower()
+    if source.get("source_backend") == "word_anchor":
+        return -20
+    if source.get("source_backend") == "chart_page_signal":
+        return -10
     if role == "orders" or _has_order_signal(text):
         return 0
     if role == "vitals":
@@ -355,6 +433,65 @@ def _fallback_zones() -> Iterable[Tuple[str, Tuple[float, float, float, float]]]
         ("orders", (0.20, 0.48, 0.98, 0.76)),
         ("orders", (0.20, 0.68, 0.98, 0.95)),
     ]
+
+
+def _word_anchor_zones(page, width: float, height: float) -> Iterable[Tuple[str, List[float], Dict[str, Any]]]:
+    try:
+        words = page.get_text("words", sort=True) or []
+    except Exception:
+        return []
+    lines: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    for word in words:
+        if len(word) < 7:
+            continue
+        key = (int(word[5]), int(word[6]))
+        item = lines.setdefault(key, {"bbox": [float(word[0]), float(word[1]), float(word[2]), float(word[3])], "words": []})
+        item["bbox"][0] = min(item["bbox"][0], float(word[0]))
+        item["bbox"][1] = min(item["bbox"][1], float(word[1]))
+        item["bbox"][2] = max(item["bbox"][2], float(word[2]))
+        item["bbox"][3] = max(item["bbox"][3], float(word[3]))
+        item["words"].append(str(word[4]))
+
+    zones: List[Tuple[str, List[float], Dict[str, Any]]] = []
+    for item in lines.values():
+        text = normalize_text(" ".join(item["words"]))
+        lowered = text.lower()
+        if not _anchor_line_signal(lowered):
+            continue
+        x1, y1, x2, y2 = item["bbox"]
+        top = max(0.0, y1 - 28)
+        bottom = min(height, max(y2 + 120, height * 0.96))
+        left = 0.02 * width if re.search(r"\b(?:staff nurse|medicine|medicines|injection|injections|chart)\b", lowered) else max(0.0, x1 - 40)
+        zones.append((
+            "orders",
+            [round(left, 2), round(top, 2), round(width * 0.98, 2), round(bottom, 2)],
+            {
+                "source_backend": "word_anchor",
+                "source_type": "page_region",
+                "source_role": "orders",
+                "source_text": text[:250],
+                "anchor_bbox": [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)],
+            },
+        ))
+        if x1 > width * 0.12:
+            zones.append((
+                "orders",
+                [round(max(0.0, x1 - 45), 2), round(top, 2), round(width * 0.98, 2), round(bottom, 2)],
+                {
+                    "source_backend": "word_anchor",
+                    "source_type": "page_region",
+                    "source_role": "orders",
+                    "source_text": text[:250],
+                    "anchor_bbox": [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)],
+                },
+            ))
+    return zones
+
+
+def _anchor_line_signal(lowered: str) -> bool:
+    return bool(
+        re.search(r"\b(?:staff nurse|medicine|medicines|medication|injection|injections|doctor'?s?\s*order|order\s*sheet|treatment\s*chart|chemotherapy)\b", lowered)
+    )
 
 
 def _chart_zones() -> Iterable[Tuple[str, Tuple[float, float, float, float]]]:

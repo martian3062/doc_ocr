@@ -168,7 +168,13 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ── doc-reader Pipeline Config ──
-DOC_READER_DATA_DIR = BASE_DIR / "data" / os.environ.get("DOC_READER_DATA_SUBDIR", "documents")
+_data_dir_env = os.environ.get("DOC_READER_DATA_DIR", "").strip()
+if _data_dir_env:
+    DOC_READER_DATA_DIR = Path(_data_dir_env)
+elif Path("/data").exists():
+    DOC_READER_DATA_DIR = Path("/data")
+else:
+    DOC_READER_DATA_DIR = BASE_DIR / "data" / os.environ.get("DOC_READER_DATA_SUBDIR", "documents")
 DOC_READER_MODEL_ID = os.environ.get(
     "DOC_READER_MODEL_ID",
     os.environ.get("EVOLET_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct"),

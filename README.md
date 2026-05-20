@@ -74,6 +74,54 @@ PDF/image input
   -> Django review UI and API
 ```
 
+## Current Django-only OCR Stack
+
+The `django_only` branch is not "regex only". Regex/rules are the final
+field-capture layer, but several layers run before and after it so the output
+keeps page evidence and works safely on a VM where GPU is busy.
+
+| Layer | Tech stack | Role in the app | Why it exists |
+| --- | --- | --- | --- |
+| PDF reader | PyMuPDF / `fitz` | Opens PDFs, extracts native text, page geometry, blocks, and embedded images. | Fast CPU-safe base layer; avoids GPU OCR when PDFs already contain usable text. |
+| Page ledger | Django ORM + Postgres `PageLedger` | Stores page text, source type, word/char counts, dimensions, and layout metadata. | Makes every later field traceable to a document page. |
+| Page/crop vision | Groq vision model, bounded by page/crop limits | Reads selected page crops such as medicine/order regions. | Handles handwritten or visually structured areas that native PDF text does not capture cleanly. |
+| Handwriting order extractor | Custom PyMuPDF crop targeting + Groq crop reader | Finds order-chart anchors like `Staff Nurse ... medicines and injections`, renders tight crops, and extracts medicine/vital order text. | This is the domain-specific layer for chemotherapy sheets and doctor/nurse order tables. |
+| Layout artifact builder | `layout_segmenter.py` | Converts native blocks, crop OCR, tables, and image regions into structured artifacts with role, backend, bbox, page, and text. | Keeps the pipeline evidence-first instead of flattening everything into one string. |
+| Note segmenter | Custom layout-aware grouping | Groups artifacts into clinical note chunks. | Gives extractors smaller, page-aware units to process. |
+| Deterministic extractor | Regex + medical rules + `artifact_extractor.py` | Creates the main `Mention` rows for diagnosis, medication, dates, vitals, investigations, and other clinical fields. | Cheap, stable, auditable, and safe in the torchless VM image. |
+| Medicine normalizer | Drug dictionary, fuzzy matching, medical short-form rules | Normalizes `Inj`, `IV`, `NS`, `PAN`, `TRASTU`, `DOCET`, dose/route fragments, and common OCR variants. | Turns noisy crop text into clinically useful medication fields. |
+| Text correction | SymSpell + medical whitelist | Fixes common OCR spelling noise after mentions are extracted. | Improves display quality without changing the evidence trail. |
+| Deep schema builder | Python schema builder | Groups flat mentions into diagnosis, medication, imaging, pathology, treatment, timeline, and quality sections. | Powers the patient detail schema cards and schema tree. |
+| Optional auto schema | Groq text model when quota allows | Enriches summaries and adaptive schema fields. | Adds richer narrative/schema context, but deterministic schema remains the fallback when Groq rate limits. |
+| Validation | Heuristic validator by default | Checks missing categories, low mention counts, evidence coverage, and review flags. | Shows whether a record is usable or needs review. |
+| UI/runtime | Django templates, HTMX, Alpine, Redis/RQ, Postgres, Docker Compose | Provides dashboard, upload/import, runs, QC, patient detail, PDF viewer, and live partial refreshes. | Keeps the Django-only build simple, deployable, and review-focused. |
+
+In the latest VM verification, the CPU/cloud-safe path processed the 10-report
+smoke batch without local `torch`: 10 PDFs, 42 note chunks, 296 mentions, and
+1062 artifacts. The Kaushal report produced 5 notes, 44 mentions, 9 categories,
+and 9 schema sections.
+
+### What Regex Does Versus The Other Layers
+
+Regex/rules are currently the safest final extractor. They create the database
+mentions that become schema fields. The upstream OCR/layout/crop layers decide
+what text is available and where it came from; the downstream schema,
+correction, and validation layers make those mentions reviewable.
+
+That means:
+
+- PyMuPDF and page ledgers provide source text and page provenance.
+- Groq crop vision and the handwriting order extractor improve medicine/order
+  text before regex sees it.
+- Regex creates auditable mentions from that prepared evidence.
+- Normalization, schema building, and validation turn those mentions into the
+  UI result.
+
+Local PaddleOCR, TrOCR, HTR-VT, and other heavy OCR models are intentionally
+not installed in the current django-only image. They should be enabled later in
+a separate local-HF/Paddle sidecar or full OCR image when GPU/CPU headroom is
+available.
+
 Every extracted value should keep source evidence:
 
 - document and page number

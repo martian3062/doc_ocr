@@ -3,52 +3,57 @@
 
 {% block content %}
 <div class="space-y-6 slide-up">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-3xl font-bold text-white brand-font">Patients</h1>
-            <p class="text-gray-400 mt-1">{{ total }} patient records</p>
+    <header class="mesh-bg rounded-[1.6rem] border border-sky-200/70 p-6 shadow-skyglass">
+        <div class="relative z-10 flex flex-wrap items-end justify-between gap-4">
+            <div>
+                <p class="text-xs font-black uppercase tracking-[0.22em] text-sky-500">review workbench</p>
+                <h1 class="mt-2 font-outfit text-4xl font-black tracking-tight text-sky-950">Patients</h1>
+                <p class="mt-2 text-sm font-semibold text-slate-600">{{ total }} patient records with linked source documents and extracted schema.</p>
+            </div>
+            <a href="{{ url('pipeline:folder_browser') }}" class="btn-primary px-4 py-2 text-sm">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+                Import
+            </a>
         </div>
-    </div>
+    </header>
 
-    <!-- Search Tool -->
-    <div class="glass flex items-center gap-3 p-3 rounded-2xl w-full max-w-md border border-purple-400/20 focus-within:border-purple-400/50 transition-colors">
-        <svg class="w-5 h-5 text-gray-400 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-        </svg>
-        <input class="bg-transparent w-full text-white placeholder-gray-500 font-medium py-1 focus:outline-none"
-               type="text"
-               name="q"
-               value="{{ query }}"
-               placeholder="Search patients..."
-               hx-get="{{ url('pipeline:patient_list') }}?partial=true"
-               hx-trigger="keyup changed delay:500ms, search"
-               hx-target="#patient-rows"
-               hx-indicator=".htmx-indicator">
-        <div class="htmx-indicator">
-            <svg class="animate-spin h-5 w-5 text-purple-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+    <section class="glass-strong rounded-2xl p-4">
+        <div class="flex max-w-xl items-center gap-3 rounded-xl border border-sky-200 bg-white/80 px-4 py-3 shadow-sm focus-within:border-sky-400">
+            <svg class="h-5 w-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input class="w-full bg-transparent text-sm font-bold text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                   type="text"
+                   name="q"
+                   value="{{ query }}"
+                   placeholder="Search by patient name, UHID, or file label"
+                   hx-get="{{ url('pipeline:patient_list') }}?partial=true"
+                   hx-trigger="keyup changed delay:500ms, search"
+                   hx-target="#patient-rows"
+                   hx-indicator=".htmx-indicator">
+            <div class="htmx-indicator">
+                <svg class="h-5 w-5 animate-spin text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+            </div>
         </div>
-    </div>
+    </section>
 
-    <!-- Data Table -->
-    <div class="glass rounded-2xl border border-white/5 overflow-hidden shadow-xl shadow-purple-900/10">
+    <section class="panel-dark overflow-hidden rounded-xl">
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
+            <table class="w-full text-left">
                 <thead>
-                    <tr class="border-b border-white/10 text-sm text-gray-400 bg-white/5">
-                        <th class="py-4 px-6 font-medium">Patient</th>
-                        <th class="py-4 px-6 font-medium">Documents</th>
-                        <th class="py-4 px-6 font-medium">Mentions</th>
-                        <th class="py-4 px-6 font-medium text-right">Actions</th>
+                    <tr class="border-b border-slate-800 text-xs font-black uppercase tracking-widest text-slate-500">
+                        <th class="px-6 py-4">Patient</th>
+                        <th class="px-6 py-4">Documents</th>
+                        <th class="px-6 py-4">Mentions</th>
+                        <th class="px-6 py-4 text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="patient-rows" class="text-sm text-gray-300 divide-y divide-white/5">
+                <tbody id="patient-rows" class="divide-y divide-slate-800 text-sm">
                     {% include "pipeline/partials/patient_rows.html" %}
                 </tbody>
             </table>
         </div>
-    </div>
+    </section>
 </div>
 {% endblock %}

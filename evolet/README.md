@@ -14,6 +14,49 @@ static CSS, and browser JavaScript. There is no Next.js frontend in this branch.
 - Validation: heuristic by default
 - Local HF/GPU models: disabled by default
 
+## OCR / Extraction Stack
+
+This branch is CPU/cloud-safe, but it is still a layered OCR system. Regex is
+the final deterministic field extractor; the other layers prepare evidence,
+read difficult crops, normalize medical text, build schema, and validate the
+record.
+
+| Layer | Tech stack | What it does |
+| --- | --- | --- |
+| PDF reader | PyMuPDF / `fitz` | Extracts native text, page geometry, text blocks, and embedded image metadata. |
+| Page evidence | Django ORM + Postgres `PageLedger` | Stores per-page text, selected source, counts, dimensions, and layout metadata. |
+| Page/crop vision | Groq vision, capped by page/crop env limits | Reads selected visual regions when medicine/order pages need OCR beyond native text. |
+| Handwriting order extraction | Custom crop router + Groq | Targets anchors such as `Staff Nurse ... medicines and injections` and extracts medicine/vital order crops. |
+| Artifact builder | `layout_segmenter.py` | Converts native blocks and crop outputs into evidence artifacts with page, bbox, role, backend, and text. |
+| Note grouping | Layout-aware note segmenter | Groups page artifacts into clinical note chunks. |
+| Field extraction | Regex + medical rules + artifact extraction | Creates `Mention` rows for diagnosis, medication, dates, vitals, investigations, and other schema fields. |
+| Medicine cleanup | Dictionary, fuzzy matching, medical short forms | Normalizes drug names, doses, routes, and common OCR/handwriting variants. |
+| Text correction | SymSpell + medical whitelist | Cleans OCR spelling noise after extraction while preserving evidence. |
+| Schema builder | Deep schema Python builder | Groups mentions into diagnosis, medication, imaging, pathology, timeline, treatment, and quality sections. |
+| Optional enrichment | Groq text schema model | Adds richer schema summaries when quota allows; deterministic schema remains the fallback. |
+| Validation | Heuristic validator | Flags missing categories, low evidence, low mention count, and review risks. |
+| UI/runtime | Django templates, HTMX, Alpine, Redis/RQ, Postgres | Shows upload/import, runs, QC, patient detail, PDF viewer, schema tree, and live recent-run updates. |
+
+Latest VM smoke verification for this branch:
+
+- 10 PDFs processed
+- 42 note chunks
+- 296 mentions
+- 1062 artifacts
+- Kaushal report: 5 notes, 44 mentions, 9 categories, 9 schema sections
+
+The VM image intentionally does not install `torch`, PaddleOCR, TrOCR, HTR-VT,
+or local HF models. Those should be added later as a separate sidecar/full OCR
+image when the GPU is idle. The production-safe path today is:
+
+```text
+PyMuPDF native text
+  -> deterministic medicine/order crop targeting
+  -> Groq crop vision for selected handwriting/table regions
+  -> regex + medical rules for auditable mentions
+  -> normalization, schema building, validation, and Django review UI
+```
+
 ## Why This Branch Exists
 
 The GPU VM may be busy with other model training. This branch avoids competing

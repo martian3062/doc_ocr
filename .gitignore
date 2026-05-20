@@ -8,3 +8,4 @@ node_modules/
 .next/
 staticfiles/
 media/
+experiments/htr_bakeoff/*/

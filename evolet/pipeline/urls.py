@@ -36,6 +36,7 @@ urlpatterns = [
     path("download/run/<uuid:run_id>/zip/", views.download_run_zip, name="download_run_zip"),
 
     # HTMX partials / API
+    path("api/recent-runs/", views.recent_runs_partial, name="recent_runs_partial"),
     path("api/progress/<uuid:run_id>/", views.run_progress, name="run_progress"),
     path("api/gpu/", views.api_gpu_status, name="api_gpu_status"),
     path("api/system/", views.api_system_info, name="api_system_info"),

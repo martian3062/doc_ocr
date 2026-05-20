@@ -2,146 +2,206 @@
 {% block title %}{{ run.name or run.id.hex[:8] }}{% endblock %}
 
 {% block content %}
-<div class="space-y-6 slide-up">
+<main class="space-y-6 slide-up">
+    <nav class="flex flex-wrap items-center justify-between gap-3">
+        <a href="{{ url('pipeline:run_list') }}" class="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-white/80 px-4 py-2 text-sm font-black text-slate-700 shadow-skyglass hover:text-sky-700">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            Runs
+        </a>
+        <div class="flex flex-wrap gap-2">
+            {% if run.status not in ['completed', 'failed'] %}
+            <form method="post" action="{{ url('pipeline:cancel_run', run_id=run.id) }}">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                <button type="submit" onclick="return confirm('Cancel this run?')" class="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-black text-red-700 hover:bg-red-100">Cancel</button>
+            </form>
+            {% endif %}
+            {% if totals.results %}
+            <a href="{{ url('pipeline:download_run_zip', run_id=run.id) }}" class="btn-primary px-4 py-2 text-sm">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5L19 9.5V19a2 2 0 01-2 2z"/></svg>
+                Download results
+            </a>
+            {% endif %}
+        </div>
+    </nav>
 
-    <!-- ── Header ── -->
-    <div class="glass rounded-2xl p-6 border border-blue-200/30 dark:border-blue-500/15 glow-blue relative overflow-hidden">
-        <div class="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/3 -z-10 pointer-events-none"></div>
-
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <div class="flex items-center gap-3 mb-1">
-                    <a href="{{ url('pipeline:run_list') }}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-                    </a>
-                    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100 brand-font truncate max-w-xl">
-                        {{ run.name or "Pipeline Run" }}
-                    </h1>
-                </div>
-                <p class="text-xs font-mono text-slate-400 dark:text-slate-500 ml-7 mb-3">{{ run.id }}</p>
-
-                <div class="flex flex-wrap items-center gap-2 ml-7">
-                    <span class="text-xs font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider flex items-center gap-1.5
-                        {% if run.status == 'completed' %}status-completed
-                        {% elif run.status == 'failed' %}status-failed
-                        {% else %}status-active{% endif %}">
-                        <span class="w-1.5 h-1.5 rounded-full inline-block
-                            {% if run.status == 'completed' %}bg-emerald-500
-                            {% elif run.status == 'failed' %}bg-red-500
-                            {% else %}bg-purple-500 animate-pulse{% endif %}"></span>
-                        {{ run.get_status_display() }}
-                    </span>
-                    <span class="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/8">
-                        {{ run.model_id }} · {{ '4-bit' if run.use_4bit else 'FP16' }}
-                    </span>
-                    {% if run.started_at %}
-                    <span class="text-xs text-slate-400 dark:text-slate-500">Started {{ run.started_at.strftime('%b %d, %H:%M') }}</span>
-                    {% endif %}
+    <header class="mesh-bg rounded-[1.6rem] border border-sky-200/70 p-6 shadow-skyglass">
+        <div class="relative z-10 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div class="min-w-0">
+                <p class="text-xs font-black uppercase tracking-[0.22em] text-sky-500">run detail</p>
+                <h1 class="mt-2 break-words font-outfit text-4xl font-black tracking-tight text-sky-950">{{ run.name or "Pipeline Run" }}</h1>
+                <p class="mt-2 font-mono text-xs font-bold text-slate-500">{{ run.id }}</p>
+                <div class="mt-4 flex flex-wrap items-center gap-2">
+                    {% set status = run.status %}
+                    {% include "pipeline/components/status_badge.html" %}
+                    <span class="rounded-md border border-sky-200 bg-white/70 px-3 py-1 text-xs font-black text-slate-600">{{ run.model_id }}</span>
+                    <span class="rounded-md border border-sky-200 bg-white/70 px-3 py-1 text-xs font-black text-slate-600">{{ '4-bit' if run.use_4bit else 'FP16' }}</span>
                 </div>
             </div>
-
-            <div class="flex items-center gap-2 shrink-0">
-                {% if run.status not in ['completed', 'failed'] %}
-                <form method="post" action="{{ url('pipeline:cancel_run', run_id=run.id) }}">
-                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-                    <button type="submit"
-                            onclick="return confirm('Cancel this run? The current step will finish before stopping.')"
-                            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-400 hover:text-white hover:bg-red-600 border border-red-500/40 hover:border-red-600 transition-all">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                        Cancel Run
-                    </button>
-                </form>
-                {% endif %}
-                {% if run.status == 'completed' %}
-                <a href="{{ url('pipeline:download_run_zip', run_id=run.id) }}"
-                   class="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-xl text-white text-sm font-semibold transition-all shadow-lg shadow-purple-500/20 hover:shadow-purple-500/35">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    Download ZIP
-                </a>
-                {% endif %}
+            <div class="grid w-full gap-3 sm:grid-cols-3 xl:w-auto">
+                <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Files</p><p class="mt-1 text-2xl font-black text-sky-950">{{ totals.documents }}</p></div>
+                <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Results</p><p class="mt-1 text-2xl font-black text-sky-950">{{ totals.results }}</p></div>
+                <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Mentions</p><p class="mt-1 text-2xl font-black text-sky-950">{{ totals.mentions }}</p></div>
             </div>
         </div>
-    </div>
+    </header>
 
-    <!-- ── Live progress ── -->
-    <div class="glass rounded-2xl border border-slate-200/30 dark:border-white/5 overflow-hidden"
-         hx-get="{{ url('pipeline:run_progress', run_id=run.id) }}"
-         {% if run.status not in ['completed', 'failed'] %}hx-trigger="every 3s"{% endif %}
-         hx-swap="innerHTML">
-        {% include "pipeline/partials/run_progress.html" %}
-    </div>
+    <section class="panel-dark rounded-xl">
+        <div class="border-b border-slate-800/70 p-5">
+            <h2 class="font-outfit text-2xl font-black text-white">Live Progress</h2>
+            <p class="mt-1 text-sm font-bold text-slate-500">Refreshes while the run is active.</p>
+        </div>
+        <div hx-get="{{ url('pipeline:run_progress', run_id=run.id) }}"
+             {% if run.status not in ['completed', 'failed'] %}hx-trigger="every 3s"{% endif %}
+             hx-swap="innerHTML">
+            {% include "pipeline/partials/run_progress.html" %}
+        </div>
+    </section>
 
-    <!-- ── Error ── -->
     {% if run.error_message %}
-    <div class="glass rounded-2xl p-5 border border-red-300/40 dark:border-red-500/25 bg-red-50/50 dark:bg-red-900/10">
-        <h2 class="text-sm font-bold text-red-600 dark:text-red-400 flex items-center gap-2 mb-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            Pipeline Error
-        </h2>
-        <pre class="text-xs font-mono text-red-500 dark:text-red-300 bg-red-100/50 dark:bg-red-900/20 p-4 rounded-xl overflow-x-auto whitespace-pre-wrap break-all">{{ run.error_message }}</pre>
-    </div>
+    <section class="rounded-xl border border-red-300 bg-red-50 p-5">
+        <h2 class="text-sm font-black text-red-700">Pipeline Error</h2>
+        <pre class="mt-3 overflow-x-auto whitespace-pre-wrap rounded-lg bg-white/80 p-4 text-xs font-bold text-red-800">{{ run.error_message }}</pre>
+    </section>
     {% endif %}
 
-    <!-- ── Execution Logs (collapsible) ── -->
-    <div class="glass rounded-2xl border border-slate-200/30 dark:border-white/5 overflow-hidden"
-         x-data="{ logsOpen: true }">
+    <section class="grid gap-4 md:grid-cols-4">
+        <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Patients</p><p class="mt-1 text-2xl font-black text-sky-950">{{ totals.patients }}</p></div>
+        <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Pages</p><p class="mt-1 text-2xl font-black text-sky-950">{{ totals.pages }}</p></div>
+        <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Notes</p><p class="mt-1 text-2xl font-black text-sky-950">{{ totals.notes }}</p></div>
+        <div class="glass rounded-xl p-4"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Artifacts</p><p class="mt-1 text-2xl font-black text-sky-950">{{ totals.artifacts }}</p></div>
+    </section>
 
-        <!-- Log header -->
-        <button @click="logsOpen = !logsOpen"
-                class="w-full px-6 py-4 border-b border-slate-200/40 dark:border-white/5 bg-slate-50/60 dark:bg-white/3 flex items-center justify-between hover:bg-slate-100/60 dark:hover:bg-white/5 transition-colors">
-            <h2 class="text-sm font-bold text-slate-700 dark:text-slate-200 brand-font flex items-center gap-2.5">
-                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Execution Logs
-                {% if logs %}
-                <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400">{{ logs|length }}</span>
-                {% endif %}
-            </h2>
-            <div class="flex items-center gap-2">
-                <button type="button" onclick="event.stopPropagation(); window.location.reload()"
-                        class="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-white/8 rounded-lg hover:bg-slate-200 dark:hover:bg-white/12 transition-colors" title="Refresh">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                </button>
-                <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="logsOpen ? 'rotate-180' : ''"
-                     fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-            </div>
-        </button>
-
-        <!-- Log body -->
-        <div x-show="logsOpen" x-collapse>
-            <div class="h-[26rem] overflow-y-auto font-mono text-[11px]">
-                {% if logs %}
-                <div class="divide-y divide-slate-100 dark:divide-white/5">
-                    {% for log in logs %}
-                    <div class="flex gap-3 px-5 py-2.5 hover:bg-slate-50 dark:hover:bg-white/3 transition-colors
-                        {% if log.level == 'error' %}bg-red-50/40 dark:bg-red-900/10
-                        {% elif log.level == 'warning' %}bg-amber-50/40 dark:bg-amber-900/10{% endif %}">
-                        <span class="text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">{{ log.created_at.strftime('%H:%M:%S') }}</span>
-                        {% if log.level == 'error' %}
-                        <span class="text-red-500 dark:text-red-400 font-bold w-14 shrink-0">[ERR]</span>
-                        <span class="text-red-400 dark:text-red-500 w-28 shrink-0 truncate">{{ log.stage }}</span>
-                        <span class="text-red-600 dark:text-red-300">{{ log.message }}</span>
-                        {% elif log.level == 'warning' %}
-                        <span class="text-amber-500 dark:text-amber-400 font-bold w-14 shrink-0">[WARN]</span>
-                        <span class="text-amber-500 dark:text-amber-400 w-28 shrink-0 truncate">{{ log.stage }}</span>
-                        <span class="text-amber-700 dark:text-amber-300">{{ log.message }}</span>
-                        {% else %}
-                        <span class="text-blue-500 dark:text-blue-400 font-bold w-14 shrink-0">[INFO]</span>
-                        <span class="text-purple-500 dark:text-purple-400 w-28 shrink-0 truncate">{{ log.stage }}</span>
-                        <span class="text-slate-600 dark:text-slate-300">{{ log.message }}</span>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="h-full flex items-center justify-center text-slate-400 dark:text-slate-500 text-xs">
-                    Waiting for logs…
-                </div>
-                {% endif %}
-            </div>
+    <section class="panel-dark overflow-hidden rounded-xl">
+        <div class="border-b border-slate-800/70 p-5">
+            <h2 class="font-outfit text-2xl font-black text-white">Source Files In This Run</h2>
+            <p class="mt-1 text-sm font-bold text-slate-500">These are the actual PDFs attached to this run.</p>
         </div>
-    </div>
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[960px] text-left">
+                <thead>
+                    <tr class="border-b border-slate-800 text-xs font-black uppercase tracking-widest text-slate-500">
+                        <th class="px-5 py-4">File</th>
+                        <th class="px-5 py-4">Patient</th>
+                        <th class="px-5 py-4">Pages</th>
+                        <th class="px-5 py-4">Extraction</th>
+                        <th class="px-5 py-4 text-right">Open</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800 text-sm">
+                    {% for doc in documents %}
+                    <tr class="hover:bg-slate-900/70">
+                        <td class="px-5 py-4">
+                            <p class="break-words font-black text-white">{{ doc.original_filename }}</p>
+                            <p class="mt-1 text-xs font-bold text-slate-500">{{ doc.source_type }} · {{ (doc.file_size_bytes / 1048576)|round(2) }} MB</p>
+                        </td>
+                        <td class="px-5 py-4">
+                            <a href="{{ url('pipeline:patient_detail', patient_id=doc.patient.id) }}" class="font-black text-cyan-200 hover:text-white">{{ doc.patient.code }}</a>
+                        </td>
+                        <td class="px-5 py-4 font-mono text-sm font-black text-slate-200">{{ doc.page_rows or doc.page_count or 0 }}</td>
+                        <td class="px-5 py-4">
+                            <p class="font-bold text-slate-300">{{ doc.note_rows }} notes · {{ doc.mention_rows }} mentions</p>
+                            <p class="mt-1 text-xs font-bold text-slate-500">{{ doc.artifact_rows }} visual artifacts</p>
+                        </td>
+                        <td class="px-5 py-4 text-right">
+                            <a href="{{ url('pipeline:api_document_pdf', doc_id=doc.id) }}" target="_blank" class="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-black text-slate-200 hover:border-cyan-400/60 hover:text-cyan-100">PDF</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-12 text-center">
+                            <p class="text-sm font-black text-amber-200">No files are linked to this run.</p>
+                            <p class="mt-2 text-xs font-bold text-slate-500">Start a new run from uploaded/imported PDFs so results can be scoped correctly.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
 
-</div>
+    <section class="panel-dark overflow-hidden rounded-xl">
+        <div class="border-b border-slate-800/70 p-5">
+            <h2 class="font-outfit text-2xl font-black text-white">Extracted Results</h2>
+            <p class="mt-1 text-sm font-bold text-slate-500">Patient-level records produced or available for the files in this run.</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[960px] text-left">
+                <thead>
+                    <tr class="border-b border-slate-800 text-xs font-black uppercase tracking-widest text-slate-500">
+                        <th class="px-5 py-4">Patient</th>
+                        <th class="px-5 py-4">Files</th>
+                        <th class="px-5 py-4">Extracted Data</th>
+                        <th class="px-5 py-4">Review</th>
+                        <th class="px-5 py-4 text-right">Result</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800 text-sm">
+                    {% for row in patient_rows %}
+                    <tr class="hover:bg-slate-900/70">
+                        <td class="px-5 py-4">
+                            <a href="{{ url('pipeline:patient_detail', patient_id=row.patient.id) }}" class="font-black text-white hover:text-cyan-200">{{ row.patient.display_name or row.patient.code }}</a>
+                            <p class="mt-1 font-mono text-xs text-slate-500">{{ row.patient.code }}</p>
+                        </td>
+                        <td class="px-5 py-4">
+                            <p class="font-black text-slate-200">{{ row.documents|length }} file(s)</p>
+                            <p class="mt-1 line-clamp-2 text-xs font-bold text-slate-500">
+                                {% for doc in row.documents %}{{ doc.original_filename }}{% if not loop.last %}, {% endif %}{% endfor %}
+                            </p>
+                        </td>
+                        <td class="px-5 py-4">
+                            <p class="font-black text-slate-100">{{ row.mention_count }} mentions</p>
+                            <p class="mt-1 text-xs font-bold text-slate-500">{{ row.artifact_count }} artifacts</p>
+                        </td>
+                        <td class="px-5 py-4">
+                            {% if row.final_record %}
+                            <p class="font-black text-emerald-200">{{ row.final_record.category_count }} sections</p>
+                            <p class="mt-1 text-xs font-bold text-slate-500">{{ row.final_record.review_flags|length }} review flags</p>
+                            {% else %}
+                            <p class="font-black text-amber-200">Pending final record</p>
+                            <p class="mt-1 text-xs font-bold text-slate-500">Open logs if the run failed.</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-4 text-right">
+                            <a href="{{ url('pipeline:patient_detail', patient_id=row.patient.id) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-black text-slate-200 hover:border-cyan-400/60 hover:text-cyan-100">
+                                View result
+                                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-12 text-center">
+                            <p class="text-sm font-black text-slate-300">No patient results are attached yet.</p>
+                            <p class="mt-2 text-xs font-bold text-slate-500">Once the run processes files, extracted records will appear here.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel-dark overflow-hidden rounded-xl">
+        <div class="flex items-center justify-between gap-3 border-b border-slate-800/70 p-5">
+            <div>
+                <h2 class="font-outfit text-2xl font-black text-white">Execution Logs</h2>
+                <p class="mt-1 text-sm font-bold text-slate-500">Latest {{ logs|length }} events from the worker.</p>
+            </div>
+            <button type="button" onclick="window.location.reload()" class="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-black text-slate-200 hover:border-cyan-400/60 hover:text-cyan-100">Refresh</button>
+        </div>
+        <div class="max-h-[32rem] overflow-y-auto font-mono text-[11px]">
+            {% for log in logs %}
+            <div class="grid gap-2 border-b border-slate-800/70 px-5 py-3 md:grid-cols-[86px_70px_130px_1fr]
+                {% if log.level == 'error' %}bg-red-500/10{% elif log.level == 'warning' %}bg-amber-500/10{% endif %}">
+                <span class="text-slate-500">{{ log.created_at.strftime('%H:%M:%S') }}</span>
+                <span class="font-black {% if log.level == 'error' %}text-red-300{% elif log.level == 'warning' %}text-amber-300{% else %}text-cyan-300{% endif %}">{{ log.level|upper }}</span>
+                <span class="truncate text-slate-400">{{ log.stage }}</span>
+                <span class="break-words text-slate-300">{{ log.message }}</span>
+            </div>
+            {% else %}
+            <div class="px-5 py-12 text-center text-sm font-bold text-slate-500">No logs yet.</div>
+            {% endfor %}
+        </div>
+    </section>
+</main>
 {% endblock %}

@@ -75,11 +75,21 @@ def extract_document_artifacts(pdf_path: str, page_rows: List[Dict[str, Any]]) -
     parser_payload = parse_document(pdf_path)
     artifacts: List[Dict[str, Any]] = list(parser_payload.get("artifacts", []))
     artifacts.extend(collect_page_vision_artifacts(pdf_path))
-    artifacts.extend(extract_handwriting_order_artifacts(pdf_path, artifacts))
+    artifacts.extend(extract_handwriting_order_artifacts(pdf_path, artifacts, page_rows=page_rows))
     parser_results = parser_payload.get("parsers", [])
-    trocr = get_trocr_backend()
-    got = get_got_ocr_backend()
-    medical_handwriting = get_medical_handwriting_backend()
+    enable_local_handwriting = (
+        config.ENABLE_HANDWRITING_OCR
+        and config.ENABLE_LOCAL_HF_VISION_MODELS
+    )
+    trocr = got = medical_handwriting = None
+    if enable_local_handwriting:
+        try:
+            trocr = get_trocr_backend()
+            got = get_got_ocr_backend()
+            medical_handwriting = get_medical_handwriting_backend()
+        except Exception as exc:
+            logger.warning("Local handwriting OCR disabled for this run: %s", exc)
+            enable_local_handwriting = False
     page_row_map = {row["page_num"]: row for row in page_rows}
 
     doc = fitz.open(pdf_path)
@@ -128,8 +138,7 @@ def extract_document_artifacts(pdf_path: str, page_rows: List[Dict[str, Any]]) -
 
                 selected_source = page_row.get("selected_source", "native")
                 should_try_handwriting = (
-                    config.ENABLE_HANDWRITING_OCR
-                    and config.ENABLE_LOCAL_HF_VISION_MODELS
+                    enable_local_handwriting
                     and not selected_source.startswith("native")
                     and len(text) < config.HANDWRITING_MIN_NATIVE_CHARS
                     and handwriting_crop_count < config.HANDWRITING_MAX_CROPS_PER_DOCUMENT
@@ -171,7 +180,7 @@ def extract_document_artifacts(pdf_path: str, page_rows: List[Dict[str, Any]]) -
 
                 artifacts.append(artifact)
 
-            if config.ENABLE_HANDWRITING_OCR and config.ENABLE_LOCAL_HF_VISION_MODELS:
+            if enable_local_handwriting:
                 layout_regions = [
                     item for item in artifacts
                     if item.get("page_num") == page_num

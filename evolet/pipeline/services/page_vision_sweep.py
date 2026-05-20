@@ -226,17 +226,18 @@ def _image_data_url(image: Image.Image) -> str:
 
 def _zones() -> Iterable[Zone]:
     return [
-        ("identity", "full_header", (0.02, 0.00, 0.98, 0.24)),
-        ("identity", "case_header_left", (0.00, 0.00, 0.36, 0.24)),
-        ("identity", "case_header_right", (0.30, 0.00, 0.98, 0.24)),
-        ("vitals", "left_vitals_column", (0.00, 0.20, 0.22, 0.92)),
+        ("orders", "chart_medicine_table_full", (0.02, 0.12, 0.98, 0.96)),
         ("orders", "main_order_area", (0.20, 0.20, 0.98, 0.92)),
-        ("orders", "upper_orders", (0.20, 0.24, 0.98, 0.50)),
         ("orders", "middle_orders", (0.20, 0.42, 0.98, 0.70)),
         ("orders", "lower_orders", (0.20, 0.62, 0.98, 0.92)),
+        ("orders", "upper_orders", (0.20, 0.24, 0.98, 0.50)),
         ("orders", "center_left_orders", (0.20, 0.25, 0.62, 0.82)),
         ("orders", "center_right_orders", (0.55, 0.25, 0.98, 0.82)),
         ("table", "full_body_grid", (0.00, 0.20, 0.98, 0.98)),
+        ("vitals", "left_vitals_column", (0.00, 0.20, 0.22, 0.92)),
+        ("identity", "full_header", (0.02, 0.00, 0.98, 0.24)),
+        ("identity", "case_header_left", (0.00, 0.00, 0.36, 0.24)),
+        ("identity", "case_header_right", (0.30, 0.00, 0.98, 0.24)),
     ]
 
 

@@ -1,0 +1,20 @@
+<div class="space-y-3">
+    {% for run in recent_runs %}
+    <a href="{{ url('pipeline:run_detail', run_id=run.id) }}" class="grid gap-3 rounded-lg border border-slate-800 bg-slate-900/40 p-4 transition hover:border-cyan-500/50 md:grid-cols-[1fr_auto_auto]">
+        <div class="min-w-0">
+            <div class="truncate font-bold text-white">{{ run.name or ("Run " ~ run.id.hex[:8]) }}</div>
+            <div class="mt-1 text-xs font-semibold text-slate-500">
+                Started {{ run.started_at.strftime('%b %d, %H:%M') if run.started_at else run.created_at.strftime('%b %d, %H:%M') }}
+                {% if run.completed_at %} · Done {{ run.completed_at.strftime('%H:%M') }}{% endif %}
+            </div>
+            <div class="mt-1 text-[11px] font-bold text-slate-600">{{ run.id.hex[:8] }} · {{ run.result_count }} result records</div>
+        </div>
+        <div class="text-sm font-semibold text-slate-300">{{ run.document_count or run.total_pdfs }} files</div>
+        <div class="text-sm font-black {{ 'text-emerald-300' if run.status == 'completed' else 'text-cyan-300' }}">
+            {{ run.status }} · {{ run.progress_percent }}% · {{ run.total_mentions }} mentions
+        </div>
+    </a>
+    {% else %}
+    <div class="rounded-lg border border-dashed border-slate-800 p-8 text-center text-sm font-bold text-slate-500">No runs yet.</div>
+    {% endfor %}
+</div>
