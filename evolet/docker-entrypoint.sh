@@ -5,11 +5,17 @@ echo "==> doc-reader starting..."
 echo "    Python: $(python --version)"
 echo "    Runtime: Django-only CPU/cloud-safe"
 
-echo "==> Running database migrations..."
-python manage.py migrate --noinput
+if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
+    echo "==> Running database migrations..."
+    python manage.py migrate --noinput
+else
+    echo "==> Skipping database migrations in this process"
+fi
 
-echo "==> Collecting static files..."
-python manage.py collectstatic --noinput --clear -v 0
+if [ "${COLLECT_STATIC:-1}" = "1" ]; then
+    echo "==> Collecting static files..."
+    python manage.py collectstatic --noinput --clear -v 0
+fi
 
 if [ "$#" -gt 0 ]; then
     echo "==> Running command: $*"
