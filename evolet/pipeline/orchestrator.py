@@ -59,6 +59,7 @@ from .services.pdf_extractor    import extract_pdf_pages, normalize_text, word_c
 from .services.note_segmenter   import triage_notes
 from .services.llm_engine       import load_model, process_unresolved_notes, unload_model
 from .services.merger           import build_final_record
+from .services.schema_cleaner   import clean_schema_mentions
 from .services.text_corrector   import correct_all_mentions, correction_report
 from .services.schema_builder   import build_deep_schema
 from .services.auto_schema      import enrich_with_auto_schema
@@ -550,6 +551,7 @@ def run_merge_phase(run: PipelineRun) -> None:
             )
             corrected_mentions = correct_all_mentions(final_data["mentions"])
             spell_check_payload = correction_report(final_data["mentions"], corrected_mentions)
+            corrected_mentions, hybrid_cleaner_payload = clean_schema_mentions(corrected_mentions)
             corrected_grouped_record = _group_mentions_for_schema(corrected_mentions)
             deep_schema = build_deep_schema(
                 patient_code   = patient.code,
@@ -587,8 +589,11 @@ def run_merge_phase(run: PipelineRun) -> None:
                 **final_data["stats"],
                 "validation": validation_payload,
                 "auto_schema": deep_schema.get("quality_checks", {}).get("auto_schema", {}),
+                "hybrid_schema_cleaner": hybrid_cleaner_payload,
                 "text_corrections_applied": spell_check_payload.get("corrected_mentions", 0),
+                "mentions_after_hybrid_cleaner": len(corrected_mentions),
             }
+            deep_schema.setdefault("quality_checks", {})["hybrid_schema_cleaner"] = hybrid_cleaner_payload
             deep_schema["validation"] = validation_payload
             deep_schema.setdefault("quality_checks", {})["validation"] = validation_payload
             FinalRecord.objects.update_or_create(

@@ -174,6 +174,25 @@
                         <div class="border-b border-slate-800/70 py-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Categories</p><p class="mt-1 text-sm font-black text-slate-100">{{ category_count }}</p></div>
                         <div class="border-b border-slate-800/70 py-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Documents</p><p class="mt-1 text-sm font-black text-slate-100">{{ documents.count() }}</p></div>
                     </div>
+                    {% set hybrid_cleaner = final_record.stats.hybrid_schema_cleaner if final_record and final_record.stats else None %}
+                    {% if hybrid_cleaner %}
+                    <div class="mt-5 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-cyan-200">Hybrid schema cleaner</p>
+                                <p class="mt-1 text-sm font-black text-white">{{ hybrid_cleaner.mentions_enriched or 0 }} enriched / {{ hybrid_cleaner.mentions_seen or 0 }} mentions</p>
+                            </div>
+                            <span class="rounded-md border border-cyan-300/30 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-cyan-100">{{ 'enabled' if hybrid_cleaner.enabled else 'off' }}</span>
+                        </div>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            {% for backend, payload in hybrid_cleaner.backends.items() %}
+                            <span class="rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-widest {{ 'border-emerald-300/30 bg-emerald-400/10 text-emerald-100' if payload.status == 'completed' else 'border-amber-300/30 bg-amber-400/10 text-amber-100' }}">
+                                {{ backend }} · {{ payload.status }}{% if payload.hits is defined %} · {{ payload.hits }}{% endif %}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
                     <div class="mt-5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
                         <p class="flex items-center gap-2 text-sm font-black text-emerald-100">
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>

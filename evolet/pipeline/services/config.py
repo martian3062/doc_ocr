@@ -202,6 +202,23 @@ GROQ_API_KEY = os.environ.get("DOC_READER_GROQ_API_KEY") or os.environ.get("GROQ
 ENABLE_TRANSFORMER_VALIDATION = env_bool("EVOLET_ENABLE_TRANSFORMER_VALIDATION", "0")
 STORE_FULL_SOURCE_TEXT = env_bool("EVOLET_STORE_FULL_SOURCE_TEXT", "1")
 
+# Hybrid schema cleaning runs after OCR/mention extraction and after the
+# deterministic duplicate merge. It is CPU-safe by default: unavailable optional
+# NLP/HF libraries are reported in FinalRecord.stats instead of failing the run.
+ENABLE_HYBRID_SCHEMA_CLEANER = env_bool("EVOLET_ENABLE_HYBRID_SCHEMA_CLEANER", "0")
+SCHEMA_CLEANER_BACKENDS = {
+    item.strip().lower()
+    for item in env("EVOLET_SCHEMA_CLEANER_BACKENDS", "rapidfuzz,symspell,medspacy,scispacy,posos,d4data,openmed").split(",")
+    if item.strip()
+}
+SCHEMA_CLEANER_HF_MAX_MENTIONS = int(env("EVOLET_SCHEMA_CLEANER_HF_MAX_MENTIONS", "24"))
+SCHEMA_CLEANER_HF_MIN_SCORE = float(env("EVOLET_SCHEMA_CLEANER_HF_MIN_SCORE", "0.45"))
+SCHEMA_CLEANER_HF_MODELS = {
+    "posos": env("EVOLET_SCHEMA_CLEANER_POSOS_MODEL", "Posos/ClinicalNER"),
+    "d4data": env("EVOLET_SCHEMA_CLEANER_D4DATA_MODEL", "d4data/biomedical-ner-all"),
+    "openmed": env("EVOLET_SCHEMA_CLEANER_OPENMED_MODEL", "OpenMed/OpenMed-NER-PharmaDetect-BioClinical-108M"),
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. Note Segmentation
