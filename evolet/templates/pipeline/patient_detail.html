@@ -128,40 +128,6 @@
         </aside>
 
         <section class="order-1 space-y-6 xl:order-2">
-            <section class="panel-dark rounded-xl p-5">
-                <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <h2 class="flex items-center gap-2 font-outfit text-2xl font-black text-white">
-                            <svg class="h-6 w-6 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-                            Extracted Schema
-                        </h2>
-                        <p class="mt-1 text-sm font-bold text-slate-500">Schema fields only, with evidence and page provenance.</p>
-                    </div>
-                    <span class="rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs font-black text-slate-300">{{ mention_count }} mentions</span>
-                </div>
-
-                {% if grouped_mentions %}
-                    {% for category, cat_mentions in grouped_mentions.items() %}
-                    <section class="border-t border-slate-800/70 py-6 first:border-t-0 first:pt-0">
-                        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Schema section</p>
-                                <h3 class="font-outfit mt-1 text-xl font-black text-white">{{ category|replace('_', ' ')|title }}</h3>
-                            </div>
-                            <span class="rounded-md border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-xs font-black text-indigo-200">{{ cat_mentions|length }}</span>
-                        </div>
-                        <div class="grid gap-3 xl:grid-cols-2">
-                            {% for m in cat_mentions %}
-                                {{ schema_item(m) }}
-                            {% endfor %}
-                        </div>
-                    </section>
-                    {% endfor %}
-                {% else %}
-                    <div class="rounded-lg border border-dashed border-slate-800 p-8 text-center text-sm font-bold text-slate-500">No schema fields extracted yet.</div>
-                {% endif %}
-            </section>
-
             <section class="grid gap-6 2xl:grid-cols-[0.95fr_1.05fr]">
                 <div class="panel-dark rounded-xl p-5">
                     <h2 class="mb-5 flex items-center gap-2 font-outfit text-xl font-black text-white">
@@ -213,10 +179,45 @@
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                             Schema display is evidence-first.
                         </p>
-                        <p class="mt-2 text-xs font-bold leading-relaxed text-emerald-200/75">This Django page now mirrors the Next schema layout: long PDF viewer, extracted schema, tree, and quality panels.</p>
+                        <p class="mt-2 text-xs font-bold leading-relaxed text-emerald-200/75">This Django page now mirrors the Next schema layout: long PDF viewer, schema tree, extracted schema, and quality panels.</p>
                     </div>
                 </div>
             </section>
+
+            <section class="panel-dark rounded-xl p-5">
+                <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 class="flex items-center gap-2 font-outfit text-2xl font-black text-white">
+                            <svg class="h-6 w-6 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                            Extracted Schema
+                        </h2>
+                        <p class="mt-1 text-sm font-bold text-slate-500">Schema fields only, with evidence and page provenance.</p>
+                    </div>
+                    <span class="rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs font-black text-slate-300">{{ mention_count }} mentions</span>
+                </div>
+
+                {% if grouped_mentions %}
+                    {% for category, cat_mentions in grouped_mentions.items() %}
+                    <section class="border-t border-slate-800/70 py-6 first:border-t-0 first:pt-0">
+                        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Schema section</p>
+                                <h3 class="font-outfit mt-1 text-xl font-black text-white">{{ category|replace('_', ' ')|title }}</h3>
+                            </div>
+                            <span class="rounded-md border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-xs font-black text-indigo-200">{{ cat_mentions|length }}</span>
+                        </div>
+                        <div class="grid gap-3 xl:grid-cols-2">
+                            {% for m in cat_mentions %}
+                                {{ schema_item(m) }}
+                            {% endfor %}
+                        </div>
+                    </section>
+                    {% endfor %}
+                {% else %}
+                    <div class="rounded-lg border border-dashed border-slate-800 p-8 text-center text-sm font-bold text-slate-500">No schema fields extracted yet.</div>
+                {% endif %}
+            </section>
+
         </section>
     </div>
 </main>
