@@ -17,6 +17,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 from rapidfuzz import fuzz
 
 from . import config
+from .medical_short_forms import find_drug_candidates
 from .pdf_extractor import normalize_text
 
 logger = logging.getLogger("pipeline")
@@ -29,7 +30,7 @@ FREQUENCY_RE = re.compile(
     re.I,
 )
 STRENGTH_RE = re.compile(r"\b(?P<strength>\d+(?:\.\d+)?\s*(?:mg|mcg|g|gm|ml|iu|units?|%)\b)", re.I)
-DURATION_RE = re.compile(r"\b(?P<duration>\d+\s*(?:days?|weeks?|months?|cycles?)\b)", re.I)
+DURATION_RE = re.compile(r"\b(?P<duration>\d+\s*(?:mins?|minutes?|mts?|hrs?|hours?|days?|weeks?|months?|cycles?)\b)", re.I)
 ROUTE_RE = re.compile(r"\b(?P<route>IV|IM|SC|PO|oral|intravenous|subcutaneous|intramuscular|topical)\b", re.I)
 
 HF_LABEL_MAP = {
@@ -50,6 +51,7 @@ HF_LABEL_MAP = {
     "procedure": "procedure",
     "treatment": "treatment",
 }
+MEDICINE_PART_KEYS = ("drug", "strength", "frequency", "duration")
 
 
 def clean_schema_mentions(mentions: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -74,6 +76,8 @@ def clean_schema_mentions(mentions: List[Dict[str, Any]]) -> Tuple[List[Dict[str
     _run_rule_layers(cleaned, report)
     _run_optional_spacy_layers(cleaned, report)
     _run_hf_layers(cleaned, report)
+    for mention in cleaned:
+        _apply_structured_contract(mention)
 
     report["mentions_enriched"] = sum(
         1 for item in cleaned if (item.get("attributes") or {}).get("schema_cleaner")
@@ -87,6 +91,7 @@ def _base_clean_mention(mention: Dict[str, Any]) -> Dict[str, Any]:
     item["normalized_value"] = normalize_text(item.get("normalized_value") or item.get("value") or "")
     attrs = item.get("attributes") if isinstance(item.get("attributes"), dict) else {}
     item["attributes"] = dict(attrs)
+    _apply_structured_contract(item)
     return item
 
 
@@ -99,7 +104,7 @@ def _run_rule_layers(mentions: List[Dict[str, Any]], report: Dict[str, Any]) -> 
         attrs = mention.setdefault("attributes", {})
         medicine_parts = _parse_medicine_parts(text)
         if medicine_parts:
-            attrs.update({k: v for k, v in medicine_parts.items() if v and not attrs.get(k)})
+            _merge_medicine_parts(attrs, medicine_parts)
             _mark(attrs, "medicine_regex")
             rule_hits += 1
 
@@ -184,14 +189,13 @@ def _run_hf_backend(backend: str, model_id: str, mentions: List[Dict[str, Any]],
             if not text:
                 continue
             entities = pipe(text)
-            mapped = _map_hf_entities(entities)
+            mapped, confidence = _map_hf_entities(entities)
             if mapped:
                 attrs = mention.setdefault("attributes", {})
                 hf_payload = attrs.setdefault("hf_schema_cleaner", {})
                 hf_payload[backend] = mapped
-                for key, values in mapped.items():
-                    if key in {"drug_name", "strength", "frequency", "duration", "dosage", "form", "route"}:
-                        attrs.setdefault(key, values[0])
+                if confidence:
+                    attrs["confidence"] = max(_coerce_confidence(attrs.get("confidence"), default=0.0), confidence)
                 _mark(attrs, backend)
                 hits += 1
         report["hf_mentions_scanned"] = max(int(report.get("hf_mentions_scanned") or 0), scanned)
@@ -221,10 +225,11 @@ def _candidate_mentions(mentions: List[Dict[str, Any]]) -> Iterable[Dict[str, An
     return priority[: config.SCHEMA_CLEANER_HF_MAX_MENTIONS]
 
 
-def _map_hf_entities(entities: Any) -> Dict[str, List[str]]:
+def _map_hf_entities(entities: Any) -> Tuple[Dict[str, List[str]], float]:
     mapped: Dict[str, List[str]] = {}
+    best_score = 0.0
     if not isinstance(entities, list):
-        return mapped
+        return mapped, best_score
     for ent in entities:
         if not isinstance(ent, dict):
             continue
@@ -239,11 +244,15 @@ def _map_hf_entities(entities: Any) -> Dict[str, List[str]]:
         values = mapped.setdefault(key, [])
         if word not in values:
             values.append(word)
-    return mapped
+        best_score = max(best_score, score)
+    return mapped, best_score
 
 
 def _parse_medicine_parts(text: str) -> Dict[str, str]:
     parts: Dict[str, str] = {}
+    drug_candidates = find_drug_candidates(text, limit=1)
+    if drug_candidates:
+        parts["drug"] = normalize_text(str(drug_candidates[0].get("normalized") or ""))
     for key, pattern in [
         ("strength", STRENGTH_RE),
         ("frequency", FREQUENCY_RE),
@@ -254,6 +263,62 @@ def _parse_medicine_parts(text: str) -> Dict[str, str]:
         if match:
             parts[key] = normalize_text(match.group(key))
     return parts
+
+
+def _merge_medicine_parts(attrs: Dict[str, Any], medicine_parts: Dict[str, str]) -> None:
+    existing = attrs.get("medicine_parts") if isinstance(attrs.get("medicine_parts"), dict) else {}
+    merged = {key: normalize_text(str(existing.get(key) or "")) for key in MEDICINE_PART_KEYS}
+    for key, value in medicine_parts.items():
+        value = normalize_text(str(value or ""))
+        if key in MEDICINE_PART_KEYS and value and not merged.get(key):
+            merged[key] = value
+    attrs["medicine_parts"] = {key: value for key, value in merged.items() if value}
+    if merged.get("drug"):
+        attrs.setdefault("drug_name", merged["drug"])
+    for key in ("strength", "frequency", "duration"):
+        if merged.get(key):
+            attrs.setdefault(key, merged[key])
+
+
+def _apply_structured_contract(mention: Dict[str, Any]) -> None:
+    attrs = mention.setdefault("attributes", {})
+    value = normalize_text(str(mention.get("normalized_value") or mention.get("value") or ""))
+    if value:
+        attrs.setdefault("cleaned_value", value)
+    entity_type = normalize_text(str(mention.get("category") or mention.get("label") or "")).lower()
+    if entity_type:
+        attrs.setdefault("entity_type", entity_type)
+
+    confidence = _coerce_confidence(mention.get("confidence"), default=0.0)
+    if not confidence:
+        confidence = _coerce_confidence(attrs.get("confidence"), default=0.72)
+    attrs["confidence"] = round(max(0.0, min(confidence, 1.0)), 3)
+
+    medicine_parts: Dict[str, str] = {}
+    existing = attrs.get("medicine_parts") if isinstance(attrs.get("medicine_parts"), dict) else {}
+    for key in MEDICINE_PART_KEYS:
+        value = existing.get(key)
+        if not value and key == "drug":
+            value = attrs.get("drug_name")
+        if not value and key == "strength":
+            value = attrs.get("strength") or attrs.get("dosage")
+        if not value:
+            value = attrs.get(key)
+        value = normalize_text(str(value or ""))
+        if value:
+            medicine_parts[key] = value
+    if medicine_parts:
+        attrs["medicine_parts"] = medicine_parts
+
+
+def _coerce_confidence(value: Any, *, default: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number > 1.0:
+        number = number / 100.0
+    return max(0.0, min(number, 1.0))
 
 
 def _mention_text(mention: Dict[str, Any]) -> str:
