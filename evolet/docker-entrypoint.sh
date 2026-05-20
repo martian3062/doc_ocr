@@ -3,7 +3,7 @@ set -e
 
 echo "==> doc-reader starting..."
 echo "    Python: $(python --version)"
-echo "    GPU:    $(python -c 'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"CPU only\")' 2>/dev/null || echo 'torch not ready')"
+echo "    Runtime: Django-only CPU/cloud-safe"
 
 echo "==> Running database migrations..."
 python manage.py migrate --noinput
@@ -16,5 +16,6 @@ if [ "$#" -gt 0 ]; then
     exec "$@"
 fi
 
-echo "==> Starting server on 0.0.0.0:9000..."
-exec python manage.py runserver 0.0.0.0:9000
+PORT="${PORT:-9000}"
+echo "==> Starting Django server on 0.0.0.0:${PORT}..."
+exec python manage.py runserver "0.0.0.0:${PORT}"

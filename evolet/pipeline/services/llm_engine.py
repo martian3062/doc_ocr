@@ -36,7 +36,10 @@ from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-import torch
+try:
+    import torch
+except ImportError:
+    torch = None
 
 from . import config
 from .pdf_extractor import normalize_text, word_count
@@ -123,7 +126,7 @@ def _load_model_locked(model_id: str = None, force_reload: bool = False, use_4bi
 
     # Quantisation config (skip if no GPU or 4-bit disabled)
     quant_config = None
-    if use_4bit and torch.cuda.is_available():
+    if use_4bit and torch is not None and torch.cuda.is_available():
         from transformers import BitsAndBytesConfig
 
         quant_config = BitsAndBytesConfig(
@@ -409,6 +412,9 @@ def _generate_batch_local_locked(
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
     t0 = time.time()
+    if torch is None:
+        raise RuntimeError("Local HF extraction requires torch; use DOC_READER_LLM_PROVIDER=groq in Django-only runtime")
+
     with torch.inference_mode():
         outputs = _model.generate(
             **inputs,

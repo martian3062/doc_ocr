@@ -1,46 +1,71 @@
-# doc-reader application
+# doc-reader Django-only runtime
 
-This directory contains the live Django + Next.js application for `doc-reader`.
+This branch serves the complete `doc-reader` interface from Django templates,
+static CSS, and browser JavaScript. There is no Next.js frontend in this branch.
 
 ## Runtime Shape
 
-- Django settings package: `doc_reader`
-- Django pipeline app: `pipeline`
-- Next.js frontend: `frontend`
-- Redis queue path: RQ when available
-- database: SQLite locally or Postgres in Docker/VM
-- default extraction: native PDF text grouped into clinical notes, then extracted by the LLM
-- validation: MedGemma first, then Qwen validation fallback when strict JSON/model access fails
-- adaptive schema: `3.0-adaptive`, driven by the categories found in the current PDFs
-- optional advanced OCR/parser ensemble: TrOCR, GOT-OCR, Docling, Surya, PaddleOCR/PP-Structure, and YOLO adapters
+- Django project: `doc_reader`
+- Django app: `pipeline`
+- UI: `templates/` + `static/`
+- Queue: Redis/RQ
+- Database: Postgres in Docker, SQLite for simple local runs
+- AI extraction: Groq/cloud path when `DOC_READER_GROQ_API_KEY` is set
+- Validation: heuristic by default
+- Local HF/GPU models: disabled by default
 
-## Main Backend Files
+## Why This Branch Exists
 
-- `manage.py`
-- `doc_reader/settings.py`
-- `doc_reader/urls.py`
-- `pipeline/orchestrator.py`
-- `pipeline/models.py`
-- `pipeline/api_views.py`
-- `pipeline/views.py`
-- `pipeline/services/config.py`
-- `pipeline/services/layout_segmenter.py`
-- `pipeline/services/parsing/`
-- `pipeline/services/ocr_backends/`
-- `pipeline/services/relation_extractor.py`
-- `pipeline/services/queue.py`
+The GPU VM may be busy with other model training. This branch avoids competing
+for VRAM by removing the CUDA image, Node build, local HF model loading, and
+heavy OCR packages from the default container.
 
-## Main Frontend Files
+The extraction may take longer, but it should not OOM the training job.
 
-- `frontend/src/app/layout.tsx`
-- `frontend/src/app/page.tsx`
-- `frontend/src/app/patients/[id]/page.tsx`
-- `frontend/src/components/KnowledgeGraph.tsx`
-- `frontend/src/lib/api.ts`
+## Docker Deploy
 
-The patient detail screen now has a persistent PDF preview under Source Records. It uses each document's `pdf_url` and keeps the extracted record on the right for side-by-side checking. The frontend theme is now a bright sparkling white/sky-blue glass style instead of the older dark slate look.
+```bash
+cd evolet
+DOC_READER_DJANGO_PORT=7000 docker compose up -d --build
+```
 
-## Local Backend
+Use any free host port from `7000-7300`:
+
+```bash
+DOC_READER_DJANGO_PORT=7010 docker compose up -d --build
+```
+
+Services:
+
+- `doc_reader_django_only_web`
+- `doc_reader_django_only_worker`
+- `doc_reader_django_only_postgres`
+- `doc_reader_django_only_redis`
+
+The web service listens inside the container on port `9000` and is exposed on
+the selected host port.
+
+## Safe Defaults
+
+```env
+DOC_READER_LLM_PROVIDER=groq
+DOC_READER_ENABLE_LOCAL_HF_LLM=0
+DOC_READER_ENABLE_LOCAL_HF_VISION_MODELS=0
+DOC_READER_ENABLE_HANDWRITING_OCR=0
+DOC_READER_ENABLE_MEDICAL_HANDWRITING_OCR=0
+DOC_READER_ENABLE_GOT_VERIFICATION=0
+DOC_READER_ENABLE_ADVANCED_PARSERS=0
+DOC_READER_VALIDATION_BACKEND=heuristic
+DOC_READER_ENABLE_TRANSFORMER_VALIDATION=0
+DOC_READER_DOC_WORKERS=1
+DOC_READER_MAX_WORKERS=4
+DOC_READER_MULTIMODAL_MEDICINE_BACKENDS=dictionary
+```
+
+Set `DOC_READER_GROQ_API_KEY` only in the VM/container environment. Do not
+commit secrets.
+
+## Local Django
 
 ```bash
 python manage.py migrate
@@ -48,60 +73,13 @@ python manage.py check
 python manage.py runserver 0.0.0.0:9000
 ```
 
-## Local Frontend
+## Main Files
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## Docker
-
-```bash
-docker compose up -d --build
-```
-
-Services:
-
-- `doc_reader_frontend` on port `3000`
-- `doc_reader_backend` on port `9000`
-- `doc_reader_worker`
-- `doc_reader_postgres`
-- `doc_reader_redis`
-
-## Environment
-
-```env
-DJANGO_SETTINGS_MODULE=doc_reader.settings
-DATABASE_URL=postgresql://doc_reader:doc_reader@postgres:5432/doc_reader
-REDIS_HOST=redis
-REDIS_PORT=6379
-HF_TOKEN=...
-HUGGING_FACE_HUB_TOKEN=...
-DOC_READER_LLM_EXTRACT_ALL_NOTES=1
-DOC_READER_ENABLE_MEDICAL_VALIDATION=1
-DOC_READER_VALIDATION_BACKEND=model
-DOC_READER_VALIDATION_MODEL_ID=google/medgemma-1.5-4b-it
-DOC_READER_VALIDATION_FALLBACK_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
-DOC_READER_ENABLE_HANDWRITING_OCR=0
-DOC_READER_ENABLE_GOT_VERIFICATION=0
-DOC_READER_ENABLE_ADVANCED_PARSERS=0
-DOC_READER_PARSER_BACKENDS=
-DOC_READER_QUEUE_MODE=rq
-DOC_READER_DOC_WORKERS=4
-```
-
-The older `EVOLET_*` environment names are still accepted as fallbacks, but new setup should use `DOC_READER_*`.
-
-The default install is intentionally LLM-oriented and avoids heavy Python OCR/layout packages. Optional advanced parser packages live in `requirements-advanced.txt`. Install that file and enable the matching env switches only for a CV/OCR comparison run.
-
-## Latest Validated Work
-
-- Repo published to `https://github.com/martian3062/doc_ocr.git`
-- Commit `de7737e`: initial current project push
-- Commit `4e33fd1`: bright frontend theme and patient PDF viewer
-- Latest completed LLM-first run: `bb7238df-ef15-4dfc-a824-157f57714eb4`
-- Completed run result: 10 / 10 PDFs, 17 mentions, 17 LLM / 0 regex, schema `3.0-adaptive`
-- Follow-on 5-PDF run started: `6a59d9af-69e1-4d85-8306-2bf342b0a280`
-- Operational note: the VM later stopped responding at the application layer while TCP ports stayed open. Use a full Google Cloud VM Stop/Start before more live checks, then restart the compose stack and cap LLM concurrency before launching more batches.
+- `Dockerfile`
+- `docker-compose.yml`
+- `requirements-django-only.txt`
+- `doc_reader/settings.py`
+- `pipeline/views.py`
+- `pipeline/api_views.py`
+- `templates/`
+- `static/`

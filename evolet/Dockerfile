@@ -1,30 +1,23 @@
-# doc-reader Dockerfile
-# Base: CUDA 12.4 + cuDNN runtime on Ubuntu 22.04 for the L4 GPU VM.
-# Build: docker build -t doc-reader-pipeline .
-# Run: docker compose --profile gpu up
+# doc-reader Django-only Dockerfile.
+# This branch intentionally avoids Node, CUDA, torch, and local HF model
+# installs. The UI is served by Django templates/static files, while AI
+# extraction uses Groq/cloud-safe paths when configured.
 
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.10 python3.10-dev python3.10-distutils python3-pip \
-        libglib2.0-0 libsm6 libxrender1 libxext6 libgl1-mesa-glx \
-        libgomp1 \
+        build-essential \
+        libglib2.0-0 libsm6 libxrender1 libxext6 libgl1 \
         poppler-utils ghostscript curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 \
- && update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1 \
- && pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
 
 WORKDIR /app
-COPY requirements.txt .
+COPY requirements-django-only.txt .
 
-RUN pip install --no-cache-dir \
-    torch==2.6.0+cu124 torchvision==0.21.0+cu124 \
-    --index-url https://download.pytorch.org/whl/cu124
-
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements-django-only.txt
 
 COPY . .
 
@@ -33,8 +26,18 @@ RUN python manage.py collectstatic --noinput
 ENV DJANGO_SETTINGS_MODULE=doc_reader.settings \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    DOC_READER_DOC_WORKERS=4 \
-    DOC_READER_ENABLE_ADVANCED_PARSERS=1
+    DOC_READER_QUEUE_MODE=rq \
+    DOC_READER_DOC_WORKERS=1 \
+    DOC_READER_MAX_WORKERS=4 \
+    DOC_READER_LLM_PROVIDER=groq \
+    DOC_READER_ENABLE_LOCAL_HF_LLM=0 \
+    DOC_READER_ENABLE_LOCAL_HF_VISION_MODELS=0 \
+    DOC_READER_ENABLE_ADVANCED_PARSERS=0 \
+    DOC_READER_ENABLE_HANDWRITING_OCR=0 \
+    DOC_READER_ENABLE_MEDICAL_HANDWRITING_OCR=0 \
+    DOC_READER_ENABLE_GOT_VERIFICATION=0 \
+    DOC_READER_VALIDATION_BACKEND=heuristic \
+    DOC_READER_ENABLE_TRANSFORMER_VALIDATION=0
 
 EXPOSE 9000
 

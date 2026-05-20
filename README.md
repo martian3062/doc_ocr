@@ -13,6 +13,32 @@ The current architecture is intentionally layered:
 
 ## Current Status
 
+### `django_only` Branch
+
+This branch runs the app as one Django service with server-rendered HTML,
+static CSS, and vanilla/HTMX/Alpine JavaScript. The old Next.js frontend is
+removed from this branch, and the Docker image is CPU/cloud-safe:
+
+- Python slim base image, not CUDA
+- no Node/Next build
+- no torch, transformers, bitsandbytes, Paddle, DocTR, or local HF model install
+- Django serves the dashboard, upload, runs, patients, QC, and API routes
+- Groq handles text/schema/vision calls when configured
+- heuristic validation stays on
+- local HF LLM and local HF vision models stay off
+
+Deploy this branch separately from the GPU stack:
+
+```bash
+git switch django_only
+cd evolet
+DOC_READER_DJANGO_PORT=7000 docker compose up -d --build
+```
+
+The live port can be any free port in `7000-7300`.
+
+### Full OCR Branch
+
 The latest VM deployment uses a safe hybrid stack:
 
 - PyMuPDF/native PDF extraction for embedded text and page rendering
@@ -45,7 +71,7 @@ PDF/image input
   -> artifact and mention extraction
   -> adaptive schema construction
   -> validation
-  -> Django API + Next.js review UI
+  -> Django review UI and API
 ```
 
 Every extracted value should keep source evidence:
