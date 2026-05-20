@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Parallel Approaches{% endblock %}
+
+{% block content %}
+<main class="space-y-6 slide-up">
+    <header class="mesh-bg rounded-[1.6rem] border border-sky-200/70 p-6 shadow-skyglass">
+        <div class="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+                <p class="text-xs font-black uppercase tracking-[0.22em] text-sky-500">stored comparison history</p>
+                <h1 class="mt-2 font-outfit text-4xl font-black tracking-tight text-sky-950">Parallel Approaches</h1>
+                <p class="mt-2 max-w-3xl text-sm font-semibold text-slate-600">Each approach keeps its own run history and result snapshot. The main pipeline remains the canonical patient output; experimental pipelines are stored beside it for comparison.</p>
+            </div>
+            <div class="glass rounded-xl p-4">
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Batches</p>
+                <p class="mt-1 text-2xl font-black text-sky-950">{{ group_count }}</p>
+            </div>
+        </div>
+    </header>
+
+    {% for group in groups %}
+    <section class="panel-dark overflow-hidden rounded-xl">
+        <div class="border-b border-slate-800/70 p-5">
+            <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">comparison batch</p>
+                    <h2 class="mt-1 font-outfit text-2xl font-black text-white">{{ group.parent.name or group.parent.id.hex[:8] }}</h2>
+                    <p class="mt-2 font-mono text-xs font-bold text-slate-500">{{ group.parent.id }}</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    {% if group.best %}
+                    <span class="rounded-lg border border-emerald-300/30 bg-emerald-400/10 px-3 py-2 text-xs font-black uppercase tracking-widest text-emerald-200">Best: {{ group.best.run.approach_key }}</span>
+                    {% endif %}
+                    <a href="{{ url('pipeline:run_compare', run_id=group.parent.id) }}" class="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs font-black text-indigo-100 hover:border-indigo-300">Compare page</a>
+                    <a href="{{ url('pipeline:run_detail', run_id=group.parent.id) }}" class="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-black text-slate-200 hover:border-cyan-400/60">Main run</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid gap-3 p-5 xl:grid-cols-4">
+            {% for row in group.rows %}
+            <article class="rounded-xl border border-slate-800 bg-slate-950/40 p-4 {% if row.is_best %}ring-2 ring-emerald-300/60{% endif %}">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-widest {{ 'text-emerald-300' if row.run.run_kind == 'main' else 'text-amber-300' }}">{{ row.run.run_kind }}</p>
+                        <h3 class="mt-1 font-outfit text-lg font-black text-white">{{ row.run.approach_key or 'main_best' }}</h3>
+                        <p class="mt-1 text-xs font-bold leading-relaxed text-slate-500">{{ row.snapshot.title or row.run.name }}</p>
+                    </div>
+                    {% if row.is_best %}<span class="rounded-md bg-emerald-400 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-950">Best</span>{% endif %}
+                </div>
+                <div class="mt-4 grid grid-cols-2 gap-2">
+                    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3"><p class="text-[10px] font-black uppercase text-slate-500">Score</p><p class="mt-1 text-xl font-black text-white">{{ row.score }}</p></div>
+                    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3"><p class="text-[10px] font-black uppercase text-slate-500">Mentions</p><p class="mt-1 text-xl font-black text-white">{{ row.totals.mentions or 0 }}</p></div>
+                    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3"><p class="text-[10px] font-black uppercase text-slate-500">Docs</p><p class="mt-1 text-xl font-black text-white">{{ row.totals.documents or 0 }}</p></div>
+                    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3"><p class="text-[10px] font-black uppercase text-slate-500">Artifacts</p><p class="mt-1 text-xl font-black text-white">{{ row.totals.artifacts or 0 }}</p></div>
+                </div>
+                <a href="{{ url('pipeline:run_detail', run_id=row.run.id) }}" class="mt-4 inline-flex w-full justify-center rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-black text-slate-200 hover:border-cyan-400/60">Open stored result</a>
+            </article>
+            {% endfor %}
+        </div>
+
+        <div class="overflow-x-auto border-t border-slate-800/70">
+            <table class="w-full min-w-[980px] text-left text-sm">
+                <thead>
+                    <tr class="border-b border-slate-800 text-xs font-black uppercase tracking-widest text-slate-500">
+                        <th class="px-5 py-4">Approach Name</th>
+                        <th class="px-5 py-4">Kind</th>
+                        <th class="px-5 py-4">Documents</th>
+                        <th class="px-5 py-4">Patients</th>
+                        <th class="px-5 py-4">Notes</th>
+                        <th class="px-5 py-4">Mentions</th>
+                        <th class="px-5 py-4">Artifacts</th>
+                        <th class="px-5 py-4">Score</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                    {% for row in group.rows %}
+                    <tr class="hover:bg-slate-900/70">
+                        <td class="px-5 py-4">
+                            <a href="{{ url('pipeline:run_detail', run_id=row.run.id) }}" class="font-black text-cyan-200 hover:text-white">{{ row.run.approach_key or 'main_best' }}</a>
+                            <p class="mt-1 font-mono text-xs text-slate-500">{{ row.run.id }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-xs font-black uppercase tracking-widest {{ 'text-emerald-300' if row.run.run_kind == 'main' else 'text-amber-300' }}">{{ row.run.run_kind }}</td>
+                        <td class="px-5 py-4 font-black text-slate-200">{{ row.totals.documents or 0 }}</td>
+                        <td class="px-5 py-4 font-black text-slate-200">{{ row.totals.patients or 0 }}</td>
+                        <td class="px-5 py-4 font-black text-slate-200">{{ row.totals.notes or 0 }}</td>
+                        <td class="px-5 py-4 font-black text-slate-200">{{ row.totals.mentions or 0 }}</td>
+                        <td class="px-5 py-4 font-black text-slate-200">{{ row.totals.artifacts or 0 }}</td>
+                        <td class="px-5 py-4 font-black text-white">{{ row.score }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% else %}
+    <section class="panel-dark rounded-xl p-10 text-center">
+        <h2 class="font-outfit text-2xl font-black text-white">No parallel approach history yet</h2>
+        <p class="mt-2 text-sm font-bold text-slate-500">Run the comparison command to store main and experimental approach results here.</p>
+    </section>
+    {% endfor %}
+</main>
+{% endblock %}

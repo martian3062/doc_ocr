@@ -572,10 +572,7 @@ def run_detail(request, run_id):
     })
 
 
-def run_compare(request, run_id):
-    """Compare a main run against its non-destructive experimental runs."""
-    selected = get_object_or_404(PipelineRun, id=run_id)
-    parent = selected.parent_run or selected
+def _comparison_rows(parent):
     related_runs = list(
         PipelineRun.objects.filter(Q(id=parent.id) | Q(parent_run=parent))
         .annotate(
@@ -607,11 +604,43 @@ def run_compare(request, run_id):
 
     for row in rows:
         row["is_best"] = row["score"] == best_score and best_score is not None
+    return rows
+
+
+def run_compare(request, run_id):
+    """Compare a main run against its non-destructive experimental runs."""
+    selected = get_object_or_404(PipelineRun, id=run_id)
+    parent = selected.parent_run or selected
+    rows = _comparison_rows(parent)
 
     return render(request, "pipeline/run_compare.html", {
         "parent": parent,
         "selected": selected,
         "rows": rows,
+    })
+
+
+def parallel_approaches(request):
+    """Show stored main/experimental extraction results grouped by comparison batch."""
+    parents = list(
+        PipelineRun.objects.filter(parent_run__isnull=True)
+        .exclude(comparison_snapshot={})
+        .order_by("-created_at")[:20]
+    )
+    groups = []
+    for parent in parents:
+        rows = _comparison_rows(parent)
+        if len(rows) < 2:
+            continue
+        groups.append({
+            "parent": parent,
+            "rows": rows,
+            "best": next((row for row in rows if row["is_best"]), None),
+        })
+
+    return render(request, "pipeline/parallel_approaches.html", {
+        "groups": groups,
+        "group_count": len(groups),
     })
 
 

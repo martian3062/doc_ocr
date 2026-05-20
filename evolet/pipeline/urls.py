@@ -23,6 +23,7 @@ urlpatterns = [
 
     # Pipeline Runs
     path("runs/", views.run_list, name="run_list"),
+    path("approaches/", views.parallel_approaches, name="parallel_approaches"),
     path("runs/<uuid:run_id>/", views.run_detail, name="run_detail"),
     path("runs/<uuid:run_id>/compare/", views.run_compare, name="run_compare"),
     path("runs/start/", views.start_run, name="start_run"),
