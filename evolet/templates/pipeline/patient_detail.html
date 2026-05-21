@@ -139,6 +139,52 @@
                         Schema Tree
                     </h2>
                     <div class="space-y-4">
+                        {% set medication_tree = final_record.grouped_record.treatment.medication_tree if final_record and final_record.grouped_record and final_record.grouped_record.treatment else {} %}
+                        {% if medication_tree %}
+                        <div class="relative pl-5">
+                            <div class="absolute bottom-2 left-1 top-2 w-px bg-cyan-500/30"></div>
+                            <div class="relative">
+                                <div class="absolute -left-5 top-3 h-px w-4 bg-cyan-500/30"></div>
+                                <p class="rounded-md border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-sm font-black text-cyan-100">
+                                    Medication tree
+                                    <span class="ml-2 text-xs font-bold text-cyan-300">{{ medication_tree|length }}</span>
+                                </p>
+                            </div>
+                            <div class="mt-2 space-y-3 pl-5">
+                                {% for key, med in medication_tree.items() %}
+                                <div class="relative rounded-lg border border-slate-800 bg-slate-950/35 p-3">
+                                    <div class="absolute -left-5 top-4 h-px w-4 bg-cyan-500/30"></div>
+                                    <div class="flex flex-wrap items-start justify-between gap-2">
+                                        <div>
+                                            <p class="text-sm font-black text-white">{{ med.medicine_name or key|replace('_', ' ')|title }}</p>
+                                            <p class="mt-1 text-[11px] font-bold text-slate-500">Pages {{ med.source_pages|join(', ') if med.source_pages else 'not linked' }}</p>
+                                        </div>
+                                        <span class="rounded-md border border-cyan-300/20 bg-cyan-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-cyan-100">{{ med.orders|length }} orders</span>
+                                    </div>
+                                    <div class="mt-3 grid gap-2 text-[11px] font-bold text-slate-300 sm:grid-cols-2">
+                                        <p><span class="text-cyan-200">Date:</span> {{ med.dates|join(', ') if med.dates else 'not dated' }}</p>
+                                        <p><span class="text-cyan-200">Dosage:</span> {{ med.dosages|join(', ') if med.dosages else 'not found' }}</p>
+                                    </div>
+                                    {% if med.orders %}
+                                    <div class="mt-3 space-y-2">
+                                        {% for order in med.orders[:3] %}
+                                        <div class="grid gap-1 rounded-md bg-slate-950/45 p-2 text-[11px] font-bold text-slate-400 sm:grid-cols-2">
+                                            <p><span class="text-cyan-200">Name:</span> {{ order.medicine_name or med.medicine_name }}</p>
+                                            <p><span class="text-cyan-200">Date:</span> {{ order.date or 'not dated' }}</p>
+                                            <p><span class="text-cyan-200">Dosage:</span> {{ order.dosage or order.strength or 'not found' }}</p>
+                                            <p><span class="text-cyan-200">Frequency:</span> {{ order.frequency or 'not found' }}</p>
+                                            <p><span class="text-cyan-200">Route:</span> {{ order.route or 'not found' }}</p>
+                                            <p><span class="text-cyan-200">Duration:</span> {{ order.duration or 'not found' }}</p>
+                                        </div>
+                                        {% endfor %}
+                                        {% if med.orders|length > 3 %}<p class="text-xs font-bold text-slate-500">+{{ med.orders|length - 3 }} more medication orders</p>{% endif %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
                         {% for category, cat_mentions in grouped_mentions.items() %}
                         <div class="relative pl-5">
                             <div class="absolute bottom-2 left-1 top-2 w-px bg-slate-800"></div>
@@ -156,6 +202,16 @@
                                     <p class="rounded-md bg-slate-950/30 px-3 py-2 text-xs leading-relaxed text-slate-300">
                                         <span class="font-black text-indigo-200">{{ (m.label or 'field')|replace('_', ' ') }}:</span> {{ m.normalized_value or m.value }}
                                     </p>
+                                    {% if category == 'medication' and m.attributes and m.attributes.medicine_parts %}
+                                    <div class="ml-4 mt-1 grid gap-1 rounded-md border border-slate-800 bg-slate-950/25 p-2 text-[11px] font-bold text-slate-400 sm:grid-cols-2">
+                                        <p><span class="text-cyan-200">Name:</span> {{ m.attributes.medicine_parts.drug or m.attributes.drug_name or m.normalized_value or m.value }}</p>
+                                        <p><span class="text-cyan-200">Date:</span> {{ m.date_text or 'not dated' }}</p>
+                                        <p><span class="text-cyan-200">Dosage:</span> {{ m.attributes.medicine_parts.strength or m.attributes.dose or m.attributes.dosage or 'not found' }}</p>
+                                        <p><span class="text-cyan-200">Frequency:</span> {{ m.attributes.medicine_parts.frequency or m.attributes.frequency or m.attributes.frequency_or_time or 'not found' }}</p>
+                                        <p><span class="text-cyan-200">Route:</span> {{ m.attributes.medicine_parts.route or m.attributes.route or 'not found' }}</p>
+                                        <p><span class="text-cyan-200">Duration:</span> {{ m.attributes.medicine_parts.duration or m.attributes.duration or 'not found' }}</p>
+                                    </div>
+                                    {% endif %}
                                 </div>
                                 {% endfor %}
                                 {% if cat_mentions|length > 10 %}<p class="text-xs font-bold text-slate-500">+{{ cat_mentions|length - 10 }} more fields</p>{% endif %}

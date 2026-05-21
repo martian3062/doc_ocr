@@ -84,6 +84,8 @@ import re
 import logging
 from typing import Any, Dict, List, Optional
 
+from .pdf_extractor import normalize_text
+
 logger = logging.getLogger("pipeline")
 
 # ── Schema version ────────────────────────────────────────────────────────────
@@ -261,6 +263,7 @@ def _parse_medication(mention: Dict[str, Any]) -> Dict[str, Any]:
       route="oral", duration="4 weeks"
     """
     attrs = mention.get("attributes") or {}
+    medicine_parts = attrs.get("medicine_parts") if isinstance(attrs.get("medicine_parts"), dict) else {}
     val = attrs.get("full_order_text") or attrs.get("display_text") or mention.get("value", "")
     low = val.lower()
 
@@ -302,13 +305,14 @@ def _parse_medication(mention: Dict[str, Any]) -> Dict[str, Any]:
         duration = m.group(1)
 
     parsed = {
-        "drug_name": attrs.get("drug_name") or drug_name,
-        "dose": attrs.get("dose") or dose,
-        "frequency": attrs.get("frequency_or_time") or frequency,
-        "route": attrs.get("route") or route,
+        "drug_name": medicine_parts.get("drug") or attrs.get("drug_name") or drug_name,
+        "dose": attrs.get("dose") or attrs.get("dosage") or medicine_parts.get("strength") or dose,
+        "strength": attrs.get("strength") or medicine_parts.get("strength") or dose,
+        "frequency": attrs.get("frequency_or_time") or attrs.get("frequency") or medicine_parts.get("frequency") or frequency,
+        "route": attrs.get("route") or medicine_parts.get("route") or route,
         "fluid": attrs.get("fluid") or None,
         "instruction": attrs.get("instruction") or None,
-        "duration": duration,
+        "duration": attrs.get("duration") or medicine_parts.get("duration") or duration,
         "full_order_text": val,
         "raw_order_text": attrs.get("raw_order_text") or mention.get("evidence_quote", "") or val,
         "raw_value": val,
@@ -317,19 +321,92 @@ def _parse_medication(mention: Dict[str, Any]) -> Dict[str, Any]:
         "source_pages": mention.get("source_pages", []),
         "evidence_quote": mention.get("evidence_quote", ""),
     }
+    parsed["order"] = {
+        "medicine_name": parsed["drug_name"],
+        "date": parsed["date_text"],
+        "dosage": parsed["dose"],
+        "strength": parsed["strength"],
+        "frequency": parsed["frequency"],
+        "route": parsed["route"],
+        "duration": parsed["duration"],
+        "instruction": parsed["instruction"],
+        "source_pages": parsed["source_pages"],
+        "evidence_quote": parsed["evidence_quote"],
+    }
     if attrs:
         parsed["short_forms"] = attrs.get("short_forms", [])
         parsed["drug_candidates"] = attrs.get("drug_candidates", [])
+        parsed["medicine_parts"] = medicine_parts
         parsed["structured_order"] = {
             "full_order_text": parsed["full_order_text"],
             "drug_name": parsed["drug_name"],
             "dose": parsed["dose"],
+            "strength": parsed["strength"],
             "route": parsed["route"],
             "fluid": parsed["fluid"],
             "frequency_or_time": parsed["frequency"],
+            "duration": parsed["duration"],
             "instruction": parsed["instruction"],
         }
     return parsed
+
+
+def _build_medication_tree(mentions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    bad_name_tokens = {
+        "cap", "caps", "capsule", "ection", "inj", "injection", "mg", "ml", "sule", "tab", "tablet",
+    }
+    tree: Dict[str, Any] = {}
+    for mention in mentions:
+        attrs = mention.get("attributes") if isinstance(mention.get("attributes"), dict) else {}
+        medicine_parts = attrs.get("medicine_parts") if isinstance(attrs.get("medicine_parts"), dict) else {}
+        drug_candidates = attrs.get("drug_candidates") if isinstance(attrs.get("drug_candidates"), list) else []
+        candidate_name = ""
+        if drug_candidates and isinstance(drug_candidates[0], dict):
+            candidate_name = normalize_text(str(drug_candidates[0].get("normalized") or ""))
+        has_medicine_signal = (
+            mention.get("category") == "medication"
+            or bool(medicine_parts)
+            or bool(attrs.get("drug_name"))
+            or bool(candidate_name)
+        )
+        if not has_medicine_signal:
+            continue
+        parsed = _safe(_parse_medication, mention, default={})
+        name = normalize_text(
+            medicine_parts.get("drug")
+            or attrs.get("drug_name")
+            or candidate_name
+            or parsed.get("drug_name")
+            or ""
+        )
+        if not name or name.lower() in bad_name_tokens or len(name) < 4:
+            continue
+        parsed["drug_name"] = name
+        if isinstance(parsed.get("order"), dict):
+            parsed["order"]["medicine_name"] = name
+        key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "unknown_medicine"
+        entry = tree.setdefault(key, {
+            "medicine_name": name,
+            "orders": [],
+            "dates": [],
+            "dosages": [],
+            "source_pages": [],
+        })
+        order = parsed.get("order") or {}
+        entry["orders"].append(order)
+        for date in [order.get("date")]:
+            if date and date not in entry["dates"]:
+                entry["dates"].append(date)
+        for dose in [order.get("dosage"), order.get("strength")]:
+            if dose and dose not in entry["dosages"]:
+                entry["dosages"].append(dose)
+        for page in order.get("source_pages") or []:
+            if page not in entry["source_pages"]:
+                entry["source_pages"].append(page)
+    for entry in tree.values():
+        entry["orders"].sort(key=lambda item: (item.get("date") or "", item.get("medicine_name") or ""))
+        entry["source_pages"] = sorted(entry["source_pages"])
+    return dict(sorted(tree.items(), key=lambda item: item[1].get("medicine_name", "")))
 
 
 def _parse_imaging(mention: Dict[str, Any]) -> Dict[str, Any]:
@@ -640,10 +717,23 @@ def _build_oncology_summary(mentions: List[Dict[str, Any]]) -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_treatment(mentions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    medication_mentions = [
+        m for m in mentions
+        if m.get("category") == "medication"
+        or (
+            isinstance(m.get("attributes"), dict)
+            and (
+                isinstance(m["attributes"].get("medicine_parts"), dict)
+                or m["attributes"].get("drug_name")
+                or m["attributes"].get("drug_candidates")
+            )
+        )
+    ]
     return {
         "medications": [
-            _safe(_parse_medication, m) for m in mentions if m.get("category") == "medication"
+            _safe(_parse_medication, m) for m in medication_mentions
         ],
+        "medication_tree": _build_medication_tree(mentions),
         "surgery": [
             _safe(_parse_surgery, m) for m in mentions if m.get("category") == "surgery"
         ],
@@ -825,6 +915,7 @@ def build_deep_schema(
         },
         "sections": sections,
         "clinical_summary": clinical_summary,
+        "treatment": _build_treatment(mentions_flat),
 
         # ── Uncategorised mentions ────────────────────────────────────────
         # ── Preserved originals (for backward compatibility) ──────────────
