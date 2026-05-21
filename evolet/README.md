@@ -1,6 +1,6 @@
-# doc-reader Django-only runtime
+# doc-ocr Django-only runtime
 
-This branch serves the complete `doc-reader` interface from Django templates,
+This branch serves the complete `doc-ocr` interface from Django templates,
 static CSS, and browser JavaScript. There is no Next.js frontend in this branch.
 
 ## Runtime Shape

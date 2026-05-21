@@ -1,4 +1,4 @@
-"""Document parser ensemble for doc-reader."""
+"""Document parser ensemble for doc-ocr."""
 
 from .ensemble import parse_document
 

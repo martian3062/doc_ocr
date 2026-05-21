@@ -52,7 +52,7 @@ class FolderImportForm(forms.Form):
     folder_path = forms.CharField(
         max_length=1000,
         widget=forms.TextInput(attrs={
-            "placeholder": "e.g. /home/pardeep/data/TMH_Patient_Reports",
+            "placeholder": "e.g. /home/pardeep/data/doc-ocr-documents",
             "class": (
                 "w-full px-4 py-3 bg-white/5 border border-purple-300/20 "
                 "rounded-xl text-white placeholder-gray-400 "

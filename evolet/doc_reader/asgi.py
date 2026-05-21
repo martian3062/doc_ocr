@@ -1,4 +1,4 @@
-"""ASGI config for the doc-reader project."""
+"""ASGI config for the doc-ocr project."""
 import os
 from django.core.asgi import get_asgi_application
 

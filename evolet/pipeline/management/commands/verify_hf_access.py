@@ -1,4 +1,4 @@
-"""Verify Hugging Face model access for doc-reader."""
+"""Verify Hugging Face model access for doc-ocr."""
 
 from django.core.management.base import BaseCommand, CommandError
 

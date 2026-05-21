@@ -1,5 +1,5 @@
 """
-doc-reader — Django settings
+doc-ocr — Django settings
 """
 import importlib.util
 import os
@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
-    "doc-reader-dev-key-change-in-production-8f3k2j5m9x",
+    "doc-ocr-dev-key-change-in-production-8f3k2j5m9x",
 )
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "1").strip() == "1"
@@ -124,7 +124,7 @@ USE_S3_STORAGE = os.environ.get(
     os.environ.get("EVOLET_USE_S3_STORAGE", "0"),
 ).strip() == "1"
 if USE_S3_STORAGE:
-    AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME", "doc-reader-media")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME", "doc-ocr-media")
     AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", "us-east-1")
     AWS_S3_ENDPOINT_URL = os.environ.get("AWS_S3_ENDPOINT_URL", "")
     AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
@@ -167,7 +167,7 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024
 # ── Defaults ──
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# ── doc-reader Pipeline Config ──
+# ── doc-ocr Pipeline Config ──
 _data_dir_env = os.environ.get("DOC_READER_DATA_DIR", "").strip()
 if _data_dir_env:
     DOC_READER_DATA_DIR = Path(_data_dir_env)

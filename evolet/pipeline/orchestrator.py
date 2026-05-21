@@ -1,5 +1,5 @@
 """
-doc-reader Pipeline Orchestrator
+doc-ocr Pipeline Orchestrator
 =============================
 Coordinates the complete medical-report processing pipeline across six phases:
 

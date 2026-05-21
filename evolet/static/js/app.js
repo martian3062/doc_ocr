@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   doc-reader — Alpine.js app components
+   doc-ocr — Alpine.js app components
    Load order: this file is a regular <script> before Alpine defers
    ───────────────────────────────────────────────────────────── */
 
@@ -10,7 +10,7 @@ function appShell() {
 
         initApp() {
             // Restore dark mode from localStorage
-            this.darkMode = localStorage.getItem('doc-reader-dark') === 'true';
+            this.darkMode = localStorage.getItem('doc-ocr-dark') === 'true';
 
             // Active nav-link highlight
             const links = document.querySelectorAll('.nav-link');
@@ -35,7 +35,7 @@ function appShell() {
 
         toggleDark() {
             this.darkMode = !this.darkMode;
-            localStorage.setItem('doc-reader-dark', this.darkMode);
+            localStorage.setItem('doc-ocr-dark', this.darkMode);
         },
     };
 }

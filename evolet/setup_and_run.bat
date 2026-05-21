@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo  doc-reader - Setup ^& Run
+echo  doc-ocr - Setup ^& Run
 echo ============================================
 echo.
 
@@ -38,12 +38,9 @@ echo Collecting static files...
 python manage.py collectstatic --noinput 2>NUL
 
 REM Import PDFs if folder exists
-if exist "data\doc-reader-documents" (
-    echo Importing PDFs from data\doc-reader-documents...
-    python manage.py import_folder "data\doc-reader-documents"
-) else if exist "data\TMH_Patient_Reports" (
-    echo Importing PDFs from data\TMH_Patient_Reports...
-    python manage.py import_folder "data\TMH_Patient_Reports"
+if exist "data\doc-ocr-documents" (
+    echo Importing PDFs from data\doc-ocr-documents...
+    python manage.py import_folder "data\doc-ocr-documents"
 )
 
 echo.

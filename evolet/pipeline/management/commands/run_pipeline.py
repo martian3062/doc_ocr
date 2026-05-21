@@ -13,7 +13,7 @@ from pipeline.orchestrator import run_full_pipeline
 
 
 class Command(BaseCommand):
-    help = "Run the doc-reader extraction pipeline"
+    help = "Run the doc-ocr extraction pipeline"
 
     def add_arguments(self, parser):
         parser.add_argument(

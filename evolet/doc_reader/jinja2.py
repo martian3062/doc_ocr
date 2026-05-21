@@ -1,5 +1,5 @@
 """
-Jinja2 Environment — Django/Jinja2 bridge for doc-reader templates.
+Jinja2 Environment — Django/Jinja2 bridge for doc-ocr templates.
 ================================================================
 Configures the Jinja2 Environment used by all pipeline templates.
 

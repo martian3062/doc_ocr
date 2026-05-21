@@ -503,7 +503,7 @@ def _post_groq(body: Dict[str, Any]) -> Dict[str, Any]:
                 "Authorization": f"Bearer {config.GROQ_API_KEY}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "doc-reader-groq-extraction/1.0",
+                "User-Agent": "doc-ocr-groq-extraction/1.0",
             },
             method="POST",
         )

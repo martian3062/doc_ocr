@@ -1,4 +1,4 @@
-# Optional advanced parser/extraction stack for doc-reader.
+# Optional advanced parser/extraction stack for doc-ocr.
 # Install on the GPU VM only when you want to enable the corresponding adapter.
 
 surya-ocr>=0.8

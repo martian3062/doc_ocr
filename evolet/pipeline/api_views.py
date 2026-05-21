@@ -1,5 +1,5 @@
 """
-doc-reader Pipeline — REST API Views
+doc-ocr Pipeline — REST API Views
 ================================
 JSON endpoints for the decoupled Next.js frontend.
 """

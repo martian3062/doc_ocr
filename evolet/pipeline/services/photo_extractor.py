@@ -1,7 +1,7 @@
 """
 Photo Extractor — Extract patient profile photos from PDF page 1.
 ==================================================================
-TMH patient reports typically include a small passport-style photo of
+doc-ocr patient reports typically include a small passport-style photo of
 the patient in the upper-left area of the first page.  This module
 attempts to extract it via two methods, tried in order:
 
@@ -210,7 +210,7 @@ def extract_profile_photo(pdf_path: str, output_path: str) -> Dict[str, Any]:
         if not meta["photo_found"]:
             try:
                 r = page.rect
-                # Region known to contain the patient photo in TMH reports:
+                # Region known to contain the patient photo in doc-ocr reports:
                 # x: 6%–25% of page width, y: 24%–43% of page height
                 clip = fitz.Rect(
                     r.x0 + 0.06 * r.width,

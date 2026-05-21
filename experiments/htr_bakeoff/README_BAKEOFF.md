@@ -1,7 +1,7 @@
 # HTR / Prescription OCR Bake-off Notes
 
 Date: 2026-05-20
-Scope: CPU-safe doc-reader integration for handwritten medicine/order crops.
+Scope: CPU-safe doc-ocr integration for handwritten medicine/order crops.
 
 ## Cloneability
 

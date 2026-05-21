@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# doc-reader - Setup & Run (Linux/VM)
+# doc-ocr - Setup & Run (Linux/VM)
 set -e
 
 echo "============================================"
-echo "  doc-reader - Setup & Run"
+echo "  doc-ocr - Setup & Run"
 echo "============================================"
 echo ""
 
@@ -30,21 +30,15 @@ echo "Collecting static files..."
 python manage.py collectstatic --noinput 2>/dev/null || true
 
 # Import PDFs if folder exists
-if [ -d "data/doc-reader-documents" ]; then
-    echo "Importing PDFs from data/doc-reader-documents..."
-    python manage.py import_folder "data/doc-reader-documents"
-elif [ -d "data/TMH_Patient_Reports" ]; then
-    echo "Importing PDFs from data/TMH_Patient_Reports..."
-    python manage.py import_folder "data/TMH_Patient_Reports"
+if [ -d "data/doc-ocr-documents" ]; then
+    echo "Importing PDFs from data/doc-ocr-documents..."
+    python manage.py import_folder "data/doc-ocr-documents"
 fi
 
 # Also check common VM paths
-if [ -d "/home/pardeep/data/doc-reader-documents" ]; then
-    echo "Importing PDFs from /home/pardeep/data/doc-reader-documents..."
-    python manage.py import_folder "/home/pardeep/data/doc-reader-documents"
-elif [ -d "/home/pardeep/data/TMH_Patient_Reports" ]; then
-    echo "Importing PDFs from /home/pardeep/data/TMH_Patient_Reports..."
-    python manage.py import_folder "/home/pardeep/data/TMH_Patient_Reports"
+if [ -d "/home/pardeep/data/doc-ocr-documents" ]; then
+    echo "Importing PDFs from /home/pardeep/data/doc-ocr-documents..."
+    python manage.py import_folder "/home/pardeep/data/doc-ocr-documents"
 fi
 
 echo ""

@@ -193,7 +193,7 @@ def _groq_read_image(image: Image.Image, *, role: str, label: str, page_num: int
             "Authorization": f"Bearer {config.GROQ_API_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "doc-reader-groq-vision/1.0",
+            "User-Agent": "doc-ocr-groq-vision/1.0",
         },
         method="POST",
     )

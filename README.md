@@ -1,6 +1,6 @@
-# doc-reader
+# doc-ocr
 
-`doc-reader` is a clinical PDF understanding system for hospital records, scanned reports, chemotherapy sheets, and doctor handwriting. It is designed to produce evidence-linked structured medical data, not just OCR text.
+`doc-ocr` is a clinical PDF understanding system for hospital records, scanned reports, chemotherapy sheets, and doctor handwriting. It is designed to produce evidence-linked structured medical data, not just OCR text.
 
 The current architecture is intentionally layered:
 

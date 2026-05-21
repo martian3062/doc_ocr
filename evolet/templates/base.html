@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}doc-reader{% endblock %} - Clinical Document Reader</title>
-    <meta name="description" content="Django-only doc-reader clinical document review UI.">
+    <title>{% block title %}doc-ocr{% endblock %} - doc-ocr</title>
+    <meta name="description" content="Django-only doc-ocr clinical document review UI.">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -197,7 +197,7 @@
                 <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-white via-sky-200 to-cyan-400 shadow-[0_10px_28px_rgba(56,189,248,0.3)]">
                     <svg class="h-5 w-5 text-sky-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7zm4 3h8M8 14h5"/></svg>
                 </div>
-                <a href="{{ url('pipeline:dashboard') }}" class="font-outfit bg-gradient-to-r from-sky-950 via-sky-500 to-cyan-300 bg-clip-text text-xl font-black tracking-tight text-transparent">doc-reader</a>
+                <a href="{{ url('pipeline:dashboard') }}" class="font-outfit bg-gradient-to-r from-sky-950 via-sky-500 to-cyan-300 bg-clip-text text-xl font-black tracking-tight text-transparent">doc-ocr</a>
             </div>
 
             <nav class="space-y-2 px-4">

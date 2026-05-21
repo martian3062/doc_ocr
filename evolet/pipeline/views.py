@@ -1,5 +1,5 @@
 """
-doc-reader Pipeline — Django Views
+doc-ocr Pipeline — Django Views
 ================================
 HTMX-powered views for the medical report OCR pipeline web UI.
 
@@ -288,7 +288,7 @@ def folder_browser(request):
     for candidate in [
         Path(settings.DOC_READER_DATA_DIR),
         Path("/data/django_only_10pdf_smoke"),
-        Path("/data/doc-reader-chemotherapy"),
+        Path("/data/doc-ocr-chemotherapy"),
         Path("/data/drive-download-chenmotherapy data"),
         Path("/data"),
     ]:

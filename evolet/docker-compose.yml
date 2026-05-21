@@ -68,7 +68,7 @@ services:
   web:
     <<: *common
     build: .
-    image: doc-reader-django-only
+    image: doc-ocr-django-only
     container_name: doc_reader_django_only_web
     ports:
       - "${DOC_READER_DJANGO_PORT:-7000}:9000"
@@ -79,7 +79,7 @@ services:
   worker:
     <<: *common
     build: .
-    image: doc-reader-django-only-worker
+    image: doc-ocr-django-only-worker
     container_name: doc_reader_django_only_worker
     command: python manage.py rqworker --worker-class rq.SimpleWorker default
     environment:

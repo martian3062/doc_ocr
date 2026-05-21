@@ -326,7 +326,7 @@ MedOCR reference patterns from {reference.get("dataset_id")}:
             "Authorization": f"Bearer {config.GROQ_API_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "doc-reader-handwriting-order/1.0",
+            "User-Agent": "doc-ocr-handwriting-order/1.0",
         },
         method="POST",
     )

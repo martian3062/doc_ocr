@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Django management script for the doc-reader project."""
+"""Django management script for the doc-ocr project."""
 import os
 import sys
 

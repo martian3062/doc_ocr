@@ -1,1 +1,1 @@
-# doc-reader Django project
+# doc-ocr Django project

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -e
-APP_DIR=${APP_DIR:-~/doc-reader}
+APP_DIR=${APP_DIR:-~/doc-ocr}
 LOG="$APP_DIR/setup.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo ""
 echo "============================================"
-echo "  doc-reader VM Setup  $(date)"
+echo "  doc-ocr VM Setup  $(date)"
 echo "  Python 3.10 + CUDA 12.4 + L4 GPU"
 echo "============================================"
 
@@ -46,10 +46,8 @@ python manage.py collectstatic --noinput 2>/dev/null || true
 
 echo ""
 echo "--- Importing sample patient reports if available..."
-if [ -d ~/data/doc-reader-documents ]; then
-    python manage.py import_folder ~/data/doc-reader-documents && echo "Import done"
-elif [ -d ~/data/TMH_Patient_Reports ]; then
-    python manage.py import_folder ~/data/TMH_Patient_Reports && echo "Import done"
+if [ -d ~/data/doc-ocr-documents ]; then
+    python manage.py import_folder ~/data/doc-ocr-documents && echo "Import done"
 else
     echo "Skipping: no document folder found"
 fi

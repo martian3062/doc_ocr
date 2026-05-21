@@ -1,4 +1,4 @@
-# doc-reader Django-only Dockerfile.
+# doc-ocr Django-only Dockerfile.
 # This branch intentionally avoids Node, CUDA, torch, and local HF model
 # installs. The UI is served by Django templates/static files, while AI
 # extraction uses Groq/cloud-safe paths when configured.

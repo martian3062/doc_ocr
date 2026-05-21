@@ -1,4 +1,4 @@
-"""WSGI config for the doc-reader project."""
+"""WSGI config for the doc-ocr project."""
 import os
 from django.core.wsgi import get_wsgi_application
 

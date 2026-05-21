@@ -1,5 +1,5 @@
 """
-doc-reader Pipeline — Database Models
+doc-ocr Pipeline — Database Models
 ===================================
 Eight Django models that mirror the pipeline's artifact hierarchy:
 
@@ -34,7 +34,7 @@ class Patient(models.Model):
     """
     One patient record, identified by a unique code derived from the PDF filename stem.
 
-    The code is the stable external identifier (e.g. "TMH_2023_001").
+    The code is the stable external identifier (e.g. "doc-ocr_2023_001").
     display_name can be enriched later from structured data in the PDF.
     profile_image is populated by the photo_extractor phase.
     """

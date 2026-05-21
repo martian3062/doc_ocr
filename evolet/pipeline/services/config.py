@@ -1,5 +1,5 @@
 """
-doc-reader Pipeline — Runtime Configuration
+doc-ocr Pipeline — Runtime Configuration
 =========================================
 Single source of truth for all tuneable knobs.
 Every constant can be overridden via an environment variable so that
@@ -345,7 +345,7 @@ CLINICAL_HINT_PATTERNS = [
     r"\bplatelet\b",   r"\blymph",       r"\bnodule\b",  r"\blesion\b",
 ]
 
-# Date extraction patterns — cover the most common formats found in TMH reports
+# Date extraction patterns — cover the most common formats found in doc-ocr reports
 DATE_PATTERNS = [
     r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b",          # 12/05/2023 or 12.05.23
     r"\b\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}\b",         # 12 May 2023

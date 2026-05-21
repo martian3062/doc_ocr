@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "==> doc-reader starting..."
+echo "==> doc-ocr starting..."
 echo "    Python: $(python --version)"
 echo "    Runtime: Django-only CPU/cloud-safe"
 
