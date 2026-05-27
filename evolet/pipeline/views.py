@@ -691,7 +691,7 @@ def run_detail(request, run_id):
     for key in ("chemotherapy", "radiation", "other"):
         cohort_docs = [doc for doc in documents if doc.cohort_key == key]
         cohort_rows = [row for row in patient_rows if row["cohort_key"] == key]
-        if not cohort_docs and not cohort_rows and key == "other":
+        if not cohort_docs and not cohort_rows:
             continue
         cohort_tabs.append({
             "key": key,
