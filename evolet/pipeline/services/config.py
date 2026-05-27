@@ -114,6 +114,34 @@ ENABLE_MEDICAL_HANDWRITING_OCR = env_bool("EVOLET_ENABLE_MEDICAL_HANDWRITING_OCR
 ENABLE_LOCAL_HF_VISION_MODELS = env_bool("EVOLET_ENABLE_LOCAL_HF_VISION_MODELS", "0")
 DOC_READER_ENABLE_ADVANCED_PARSERS = env_bool("EVOLET_ENABLE_ADVANCED_PARSERS", "0")
 DOC_READER_PARSER_BACKENDS = env("EVOLET_PARSER_BACKENDS", "")
+
+# Full-page / crop-level VLM OCR backends. These are intentionally off by
+# default because they are heavy; docker-compose or one-off tests can enable
+# whichever mix fits the current GPU.
+ENABLE_OLMOCR_PARSER = env_bool("EVOLET_ENABLE_OLMOCR_PARSER", "0")
+OLMOCR_MODEL_ID = env("EVOLET_OLMOCR_MODEL_ID", "allenai/olmOCR-2-7B-1025")
+OLMOCR_USE_4BIT = env_bool("EVOLET_OLMOCR_USE_4BIT", "0")
+OLMOCR_MAX_PAGES_PER_DOCUMENT = int(env("EVOLET_OLMOCR_MAX_PAGES_PER_DOCUMENT", "2"))
+OLMOCR_RENDER_DPI = int(env("EVOLET_OLMOCR_RENDER_DPI", "180"))
+OLMOCR_MAX_NEW_TOKENS = int(env("EVOLET_OLMOCR_MAX_NEW_TOKENS", "1024"))
+
+ENABLE_CHANDRA_OCR = env_bool("EVOLET_ENABLE_CHANDRA_OCR", "0")
+CHANDRA_OCR_MODEL_ID = env("EVOLET_CHANDRA_OCR_MODEL_ID", "datalab-to/chandra-ocr-2")
+CHANDRA_USE_4BIT = env_bool("EVOLET_CHANDRA_USE_4BIT", "1")
+CHANDRA_MAX_NEW_TOKENS = int(env("EVOLET_CHANDRA_MAX_NEW_TOKENS", "512"))
+ENABLE_MISTRAL_OCR = env_bool("EVOLET_ENABLE_MISTRAL_OCR", "0")
+
+ENABLE_SAHI_PRESCRIPTION_SEGMENTATION = env_bool("EVOLET_ENABLE_SAHI_PRESCRIPTION_SEGMENTATION", "0")
+SAHI_PRESCRIPTION_MODEL_TYPE = env("EVOLET_SAHI_PRESCRIPTION_MODEL_TYPE", "ultralytics")
+SAHI_PRESCRIPTION_MODEL_ID = env("EVOLET_SAHI_PRESCRIPTION_MODEL_ID", "Armaggheddon/yolo11-document-layout")
+SAHI_PRESCRIPTION_MODEL_FILE = env("EVOLET_SAHI_PRESCRIPTION_MODEL_FILE", "yolo11n_doc_layout.pt")
+SAHI_PRESCRIPTION_DEVICE = env("EVOLET_SAHI_PRESCRIPTION_DEVICE", "cuda:0" if GPU_AVAILABLE else "cpu")
+SAHI_PRESCRIPTION_DPI = int(env("EVOLET_SAHI_PRESCRIPTION_DPI", "180"))
+SAHI_PRESCRIPTION_CONFIDENCE = float(env("EVOLET_SAHI_PRESCRIPTION_CONFIDENCE", "0.25"))
+SAHI_PRESCRIPTION_SLICE_HEIGHT = int(env("EVOLET_SAHI_PRESCRIPTION_SLICE_HEIGHT", "768"))
+SAHI_PRESCRIPTION_SLICE_WIDTH = int(env("EVOLET_SAHI_PRESCRIPTION_SLICE_WIDTH", "768"))
+SAHI_PRESCRIPTION_OVERLAP = float(env("EVOLET_SAHI_PRESCRIPTION_OVERLAP", "0.22"))
+SAHI_PRESCRIPTION_MAX_PAGES_PER_DOCUMENT = int(env("EVOLET_SAHI_PRESCRIPTION_MAX_PAGES_PER_DOCUMENT", "5"))
 PADDLE_STRUCTURE_DEVICE = env("EVOLET_PADDLE_STRUCTURE_DEVICE", "cpu")
 PADDLE_STRUCTURE_CPU_THREADS = int(env("EVOLET_PADDLE_STRUCTURE_CPU_THREADS", "2"))
 PADDLE_STRUCTURE_MAX_PAGES_PER_DOCUMENT = int(env("EVOLET_PADDLE_STRUCTURE_MAX_PAGES_PER_DOCUMENT", "2"))
@@ -124,7 +152,7 @@ PADDLE_STRUCTURE_GPU_MEMORY_FRACTION = float(env("EVOLET_PADDLE_STRUCTURE_GPU_ME
 PADDLE_STRUCTURE_GPU_STOP_FRACTION = float(env("EVOLET_PADDLE_STRUCTURE_GPU_STOP_FRACTION", "0.80"))
 PADDLE_STRUCTURE_GPU_ID = int(env("EVOLET_PADDLE_STRUCTURE_GPU_ID", "0"))
 TROCR_MODEL_ID = env("EVOLET_TROCR_MODEL_ID", "microsoft/trocr-large-handwritten")
-MEDICAL_HANDWRITING_MODEL_ID = env("EVOLET_MEDICAL_HANDWRITING_MODEL_ID", "espnet/iam_handwriting_ocr")
+MEDICAL_HANDWRITING_MODEL_ID = env("EVOLET_MEDICAL_HANDWRITING_MODEL_ID", "microsoft/trocr-base-handwritten")
 MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS = [
     item.strip()
     for item in env(
@@ -179,7 +207,18 @@ MEDOCR_REFERENCE_MAX_EXAMPLES = int(env("EVOLET_MEDOCR_REFERENCE_MAX_EXAMPLES", 
 # LLM-first extraction and validation. The default path sends every meaningful
 # grouped note to the extraction LLM, then audits the merged patient record with
 # a validation LLM. Both stages degrade gracefully if model access is missing.
-LLM_EXTRACT_ALL_NOTES = env_bool("EVOLET_LLM_EXTRACT_ALL_NOTES", "0")
+LLM_EXTRACT_ALL_NOTES = env_bool("EVOLET_LLM_EXTRACT_ALL_NOTES", "1")
+LLM_EXTRACT_PER_BACKEND_ARTIFACTS = env_bool("EVOLET_LLM_EXTRACT_PER_BACKEND_ARTIFACTS", "1")
+LLM_BACKEND_NOTE_MIN_CHARS = int(env("EVOLET_LLM_BACKEND_NOTE_MIN_CHARS", "40"))
+LLM_BACKEND_NOTE_MAX_CHARS = int(env("EVOLET_LLM_BACKEND_NOTE_MAX_CHARS", "6000"))
+LLM_BACKEND_NOTE_BACKENDS = {
+    item.strip().lower()
+    for item in env(
+        "EVOLET_LLM_BACKEND_NOTE_BACKENDS",
+        "native,mixed,olmocr,chandra_ocr,sahi_prescription,groq_vision,groq_handwriting_order,handwriting_ensemble",
+    ).split(",")
+    if item.strip()
+}
 ENABLE_MEDICAL_VALIDATION = env_bool("EVOLET_ENABLE_MEDICAL_VALIDATION", "1")
 REQUIRE_MEDICAL_VALIDATION = env_bool("EVOLET_REQUIRE_MEDICAL_VALIDATION", "1")
 VALIDATION_BACKEND = env("EVOLET_VALIDATION_BACKEND", "heuristic")
@@ -201,6 +240,9 @@ SCHEMA_TIMEOUT_SECONDS = int(env("EVOLET_SCHEMA_TIMEOUT_SECONDS", "60"))
 GROQ_API_KEY = os.environ.get("DOC_READER_GROQ_API_KEY") or os.environ.get("GROQ_API_KEY", "")
 ENABLE_TRANSFORMER_VALIDATION = env_bool("EVOLET_ENABLE_TRANSFORMER_VALIDATION", "0")
 STORE_FULL_SOURCE_TEXT = env_bool("EVOLET_STORE_FULL_SOURCE_TEXT", "1")
+ENABLE_SPARK_AGENTIC_SCHEMA = env_bool("EVOLET_ENABLE_SPARK_AGENTIC_SCHEMA", "1")
+SPARK_AGENTIC_MIN_EVIDENCE_COVERAGE = float(env("EVOLET_SPARK_AGENTIC_MIN_EVIDENCE_COVERAGE", "0.70"))
+SPARK_AGENTIC_MIN_MEDICATION_FIELDS = int(env("EVOLET_SPARK_AGENTIC_MIN_MEDICATION_FIELDS", "3"))
 
 # Hybrid schema cleaning runs after OCR/mention extraction and after the
 # deterministic duplicate merge. It is CPU-safe by default: unavailable optional
@@ -239,14 +281,16 @@ DEDUP_EXACT_NOTES = True
 # (prevents runaway GPU time on very long PDFs)
 MAX_NOTES_PER_PATIENT_FOR_LLM = int(env("EVOLET_MAX_NOTES_PER_PATIENT_FOR_LLM", "40"))
 
-# A note needs at least this clinical signal score to be worth sending to the LLM
-MIN_SIGNAL_FOR_LLM = int(env("EVOLET_MIN_SIGNAL_FOR_LLM", "25"))
+# A note needs at least this clinical signal score to be worth sending to the LLM.
+# Indian hospital forms score low on English-only patterns so keep this low.
+MIN_SIGNAL_FOR_LLM = int(env("EVOLET_MIN_SIGNAL_FOR_LLM", "3"))
 
-# If regex already found this many mentions in a note, skip the LLM for that note
-MIN_REGEX_MENTIONS_TO_SKIP_LLM = 3
+# If regex already found this many mentions in a note, skip the LLM for that note.
+# Set high so LLM always runs — regex alone misses handwritten/abbreviation-heavy text.
+MIN_REGEX_MENTIONS_TO_SKIP_LLM = int(env("EVOLET_MIN_REGEX_MENTIONS_TO_SKIP_LLM", "50"))
 
-# Short notes (< 40 words) rarely contain enough context for the LLM to add value
-SEND_SHORT_NOTES_TO_LLM = env_bool("EVOLET_SEND_SHORT_NOTES_TO_LLM", "0")
+# Always send short notes to LLM — Indian case sheets have dense short handwritten orders.
+SEND_SHORT_NOTES_TO_LLM = env_bool("EVOLET_SEND_SHORT_NOTES_TO_LLM", "1")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -300,8 +344,9 @@ MAX_WORKERS = int(env("EVOLET_MAX_WORKERS", "4"))
 # For single-GPU servers, keep at 4 — increasing beyond this adds thread overhead.
 DOC_WORKERS = int(env("EVOLET_DOC_WORKERS", "4"))
 
-# Skip re-processing PDFs that already have PageLedger rows in the database
-SKIP_EXISTING = env_bool("EVOLET_SKIP_EXISTING", "1")
+# Skip re-processing PDFs that already have extracted output in the database.
+# Default=0 (always reprocess) — set EVOLET_SKIP_EXISTING=1 in production to cache results.
+SKIP_EXISTING = env_bool("EVOLET_SKIP_EXISTING", "0")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -335,14 +380,41 @@ LOW_VALUE_PATTERNS = [
 # Clinical keyword hints used to score notes — more hits → higher signal → more
 # likely to be sent to the LLM for deep extraction
 CLINICAL_HINT_PATTERNS = [
-    r"\bdiagnosis\b", r"\bcarcinoma\b", r"\brcc\b", r"\besophagus\b",
+    # Oncology / pathology
+    r"\bdiagnosis\b", r"\bcarcinoma\b", r"\brcc\b",     r"\besophagus\b",
     r"\bmetast",       r"\bstage\b",     r"\bgrade\b",   r"\bbiopsy\b",
-    r"\bhistopath\b",  r"\bhpr\b",       r"\bihc\b",     r"\bpet ct\b",
+    r"\bhistopath\b",  r"\bhpr\b",       r"\bihc\b",     r"\bpet\b",
     r"\bc?ect\b",      r"\bmri\b",       r"\bradiotherapy\b", r"\brt\b",
     r"\bsurgery\b",    r"\bnephrectomy\b", r"\bsunitinib\b",
     r"\bchemo",        r"\btablet\b",    r"\btab\b",     r"\bplan\b",
     r"\bfollow[- ]?up\b", r"\bpain\b",  r"\bcreat\b",   r"\bhb\b",
     r"\bplatelet\b",   r"\blymph",       r"\bnodule\b",  r"\blesion\b",
+    r"\btumou?r\b",    r"\bancology\b",  r"\boncology\b",
+    # Indian hospital abbreviations (medication / route / frequency)
+    r"\binj\b",        r"\binjection\b", r"\binfusion\b",
+    r"\b(?:bd|tds|od|sos|stat|qid|prn)\b",
+    r"\b(?:iv|i\.v|im|i\.m|sc|s\.c|po|p\.o)\b",
+    r"\bdose\b",       r"\bmg\b",        r"\bml\b",      r"\bmcg\b",
+    r"\bunit[s]?\b",   r"\bvial\b",      r"\bamp\b",     r"\bcap\b",
+    # Vitals / clinical signs
+    r"\bvital",        r"\b(?:bp|spo2|spo₂|pr|rr|hr)\b",
+    r"\bpulse\b",      r"\btemperature\b", r"\btemp\b",
+    r"\boxygen\b",     r"\bsaturation\b",
+    r"\bblood pressure\b",
+    # Indian hospital form identifiers
+    r"\buhid\b",       r"\bipd\b",       r"\bopd\b",
+    r"\bward\b",       r"\bbed\b",       r"\bdepartment\b",
+    r"\badmission\b",  r"\bdischarge\b", r"\bcase sheet\b",
+    r"\bcase history\b", r"\bconsultation\b",
+    # Doctors / orders
+    r"\bdr\.?\b",      r"\bdoctor\b",    r"\bconsultant\b",
+    r"\border\b",      r"\bprescri",     r"\btreatment\b",
+    r"\bmedication\b", r"\bdrug\b",      r"\btherapy\b",
+    # Labs / imaging
+    r"\breport\b",     r"\btest\b",      r"\blab\b",
+    r"\bx[- ]?ray\b",  r"\bultrasound\b", r"\busg\b",
+    r"\bwbc\b",        r"\brbc\b",       r"\bsgot\b",    r"\bsgpt\b",
+    r"\bcreatinine\b", r"\burea\b",      r"\bsodium\b",  r"\bpotassium\b",
 ]
 
 # Date extraction patterns — cover the most common formats found in doc-ocr reports
@@ -365,13 +437,17 @@ _DATE_RE        = [re.compile(p, re.I) for p in DATE_PATTERNS]
 # swapped without touching the engine code.
 
 SYSTEM_PROMPT = """
-You extract structured content from one PDF note. The PDF may be any medical,
-administrative, billing, consent, discharge, lab, prescription, or mixed
-hospital document type. Be exhaustive: capture every meaningful field, table
-row, value, instruction, identifier, observation, medication, plan item, date,
-address/contact, billing/admin value, and clinically relevant free-text line.
+You extract structured content from one hospital document note. This is an Indian
+hospital EHR system (Tata Memorial Hospital / similar). Documents include case
+sheets, admission/discharge forms, prescription slips, doctor's orders, nursing
+notes, lab reports, imaging reports, consent forms, and billing documents.
 
-Return exactly one JSON object with this shape:
+Text may be:
+- Printed English form fields with handwritten fill-ins
+- Handwritten doctor orders in abbreviated Indian medical shorthand
+- Mixed printed + handwritten on the same page
+
+Return exactly one JSON object:
 {
   "mentions": [
     {
@@ -389,24 +465,29 @@ Return exactly one JSON object with this shape:
 
 Rules:
 - JSON only. No markdown. No commentary.
-- Return as many mentions as needed to cover the note in depth. Do not stop at
-  only a summary. For tables, return one mention per row or row group.
-- When a case sheet contains handwritten orders or vitals, extract each visible
-  medication/order/vital as its own mention: drug name, dose, route, infusion
-  volume, timing, oxygen saturation, BP, pulse, respiratory rate, temperature,
-  admission/discharge dates, consultant, UHID/IPD, diagnosis, and category.
-- Preserve uncertain handwriting as possible, not omitted. Keep the raw visible
-  spelling in value and place cleaned guesses in normalized_value.
-- Do not invent facts.
-- evidence_quote must be a short verbatim snippet from the note.
-- If the note has readable text but no medical finding, still extract useful
-  administrative/source fields such as headings, patient identifiers, dates,
-  department, doctor, visit/admission data, totals, signatures, or instructions.
-- If truly no useful readable text exists, return {"mentions":[]}.
-- Use concise snake_case categories that match the document content.
-- Prefer familiar medical categories when they fit, for example diagnosis,
-  medication, procedure, lab, imaging, pathology, follow_up, billing,
-  demographics, identifier, admission, discharge, consent, appointment,
-  insurance, contact, vital_sign, instruction, note, or other.
-- Do not force a mention into an oncology category if the PDF is not oncology.
+- Be exhaustive — every field, table row, order, vital, identifier.
+- Indian medical abbreviations to recognise:
+  Inj = Injection, Tab = Tablet, Cap = Capsule, Amp = Ampoule
+  BD = twice daily, TDS = three times daily, OD = once daily,
+  SOS = as needed, STAT = immediately, IV = intravenous, IM = intramuscular,
+  SC = subcutaneous, PO = by mouth, N/S = normal saline, RL = Ringer lactate
+  UHID = hospital ID, IPD = inpatient, OPD = outpatient
+  BP = blood pressure, PR = pulse rate, RR = respiratory rate,
+  SpO2 = oxygen saturation, Temp = temperature
+- Extract each medication order as its own mention with: drug name, dose, route,
+  frequency, duration, and infusion volume if applicable.
+- Extract each vital sign as its own mention: label (BP/PR/SpO2/Temp/RR/Weight),
+  value with units, and date/time.
+- Extract patient identifiers: name, UHID, IPD number, age, sex, ward, bed.
+- Extract diagnosis (primary + secondary), stage, grade, histopathology findings.
+- Extract dates for admission, discharge, procedures, follow-up appointments.
+- Uncertain/unclear handwriting: set certainty="possible", put best guess in
+  normalized_value, raw text in value.
+- Do not invent facts. evidence_quote = short verbatim snippet.
+- If text contains only admin headings (no clinical data), still extract those
+  as identifier/admission/demographics mentions.
+- If truly no readable text, return {"mentions":[]}.
+- Categories: diagnosis, medication, vital_sign, lab, imaging, pathology,
+  procedure, follow_up, identifier, admission, discharge, demographics,
+  doctor_order, nursing_note, billing, consent, instruction, other.
 """.strip()

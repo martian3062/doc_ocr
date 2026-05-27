@@ -84,6 +84,25 @@ PLAN_MATRIX: List[Dict[str, Any]] = [
             "ENABLE_LOCAL_HF_VISION_MODELS": False,
         },
     },
+    {
+        "key": "sahi_spark_full",
+        "kind": PipelineRun.RunKind.EXPERIMENT,
+        "title": "EXP SAHI prescription + SPARK schema",
+        "description": "20226_tech lane: SAHI-style sliced prescription regions, YOLO layout, local HF vision hooks and SPARK-style schema verification.",
+        "full_pipeline": True,
+        "overrides": {
+            "SKIP_EXISTING": False,
+            "DOC_READER_ENABLE_ADVANCED_PARSERS": True,
+            "DOC_READER_PARSER_BACKENDS": "sahi_prescription,yolo_layout",
+            "ENABLE_SAHI_PRESCRIPTION_SEGMENTATION": True,
+            "ENABLE_LOCAL_HF_VISION_MODELS": True,
+            "ENABLE_HANDWRITING_OCR": True,
+            "ENABLE_MEDICAL_HANDWRITING_OCR": True,
+            "ENABLE_SPARK_AGENTIC_SCHEMA": True,
+            "SCHEMA_PROVIDER": "local",
+            "ENABLE_LOCAL_HF_LLM": True,
+        },
+    },
 ]
 
 

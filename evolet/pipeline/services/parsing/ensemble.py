@@ -9,6 +9,7 @@ from .. import config
 from .base import ParserResult
 from .docling_parser import DoclingParser
 from .paddle_parser import PaddleStructureParser
+from .sahi_prescription_parser import SAHIPrescriptionParser
 from .surya_parser import SuryaParser
 from .yolo_layout_parser import YOLOLayoutParser
 
@@ -18,6 +19,7 @@ PARSERS = {
     "docling": DoclingParser,
     "surya": SuryaParser,
     "paddle_structure": PaddleStructureParser,
+    "sahi_prescription": SAHIPrescriptionParser,
     "yolo_layout": YOLOLayoutParser,
 }
 

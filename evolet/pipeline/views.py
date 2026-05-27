@@ -41,7 +41,7 @@ from django.views.decorators.http import require_POST
 from .forms import FolderImportForm, PDFUploadForm
 from .models import (
     DocumentArtifact, FinalRecord, Mention, NoteLedger, PDFDocument,
-    Patient, PipelineRun,
+    PageLedger, Patient, PipelineRun,
 )
 from .services.gpu_utils import gpu_info, system_info
 from .services.qc import compute_run_summary
@@ -56,6 +56,55 @@ _ACTIVE_STATUSES = [
     "llm_processing", "merging", "qc",
 ]
 
+RECENT_RUN_LIMIT = 8
+RUN_LIST_LIMIT = 50
+DASHBOARD_DOC_ID_LIMIT = 200
+
+COHORT_LABELS = {
+    "chemotherapy": "Chemotherapy",
+    "radiation": "Radiation",
+    "other": "Other",
+}
+
+
+def _cohort_key_from_text(text: str) -> str:
+    value = (text or "").lower()
+    if "chemo" in value or "chemotherapy" in value:
+        return "chemotherapy"
+    if "radio" in value or "radiation" in value:
+        return "radiation"
+    return "other"
+
+
+def _cohort_key_for_document(doc) -> str:
+    source = getattr(doc, "source_folder", {}) or {}
+    folder_name = str(source.get("folder_name", "") if isinstance(source, dict) else "")
+    folder_path = str(source.get("folder_path", "") if isinstance(source, dict) else "")
+
+    # Prefer the actual child folder over parent staging names such as
+    # "chemo_radio_40...", otherwise radiation files get misclassified.
+    folder_key = _cohort_key_from_text(folder_name)
+    if folder_key != "other":
+        return folder_key
+
+    path_segments = [
+        segment.lower()
+        for segment in folder_path.replace("\\", "/").split("/")
+        if segment
+    ]
+    if any(segment in {"radiation", "radio"} or segment.startswith("radiation") for segment in path_segments):
+        return "radiation"
+    if any(segment in {"chemotherapy", "chemo"} or segment.startswith("chemotherapy") for segment in path_segments):
+        return "chemotherapy"
+
+    return _cohort_key_from_text(
+        " ".join([getattr(doc, "original_filename", ""), getattr(doc.patient, "code", "")])
+    )
+
+
+def _cohort_label(key: str) -> str:
+    return COHORT_LABELS.get(key, COHORT_LABELS["other"])
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Dashboard
@@ -68,17 +117,22 @@ def dashboard(request):
     Counts are pulled directly from the database; no caching needed at
     typical dataset sizes (hundreds of patients).
     """
-    all_doc_ids = list(PDFDocument.objects.values_list("id", flat=True))
+    total_pdfs = PDFDocument.objects.count()
+    all_doc_ids = list(
+        PDFDocument.objects.order_by("-created_at")
+        .values_list("id", flat=True)[:DASHBOARD_DOC_ID_LIMIT]
+    )
     return render(request, "dashboard.html", {
         "total_patients": Patient.objects.count(),
-        "total_pdfs":     PDFDocument.objects.count(),
+        "total_pdfs":     total_pdfs,
         "total_mentions": Mention.objects.count(),
-        "recent_runs":    _recent_runs_queryset(),
+        "recent_runs":    _recent_runs_queryset(RECENT_RUN_LIMIT),
         "active_run":     PipelineRun.objects.filter(
             status__in=_ACTIVE_STATUSES
         ).first(),
         "gpu":        gpu_info(),
         "all_doc_ids": all_doc_ids,
+        "all_doc_count": total_pdfs,
     })
 
 
@@ -326,23 +380,46 @@ def folder_browser(request):
     })
 
 
-def _recent_runs_queryset(limit: int | None = None):
-    queryset = (
-        PipelineRun.objects.annotate(
-            document_count=Count("documents", distinct=True),
-            patient_count=Count("documents__patient", distinct=True),
-            result_count=Count("finalrecord", distinct=True),
-            artifact_count=Count("artifacts", distinct=True),
-        )
-        .order_by("-created_at")
+def _recent_runs_queryset(limit: int = RECENT_RUN_LIMIT):
+    """
+    Recent run cards are polled frequently by HTMX. Keep this intentionally
+    cheap: avoid distinct joins across DocumentArtifact/Mention while a run is
+    actively writing thousands of rows.
+    """
+    limit = max(int(limit or RECENT_RUN_LIMIT), 1)
+    runs = list(
+        PipelineRun.objects.order_by("-created_at")[:limit]
     )
-    return queryset[:limit] if limit else queryset
+    if not runs:
+        return []
+
+    run_ids = [run.id for run in runs]
+    result_counts = {
+        item["run_id"]: item["count"]
+        for item in FinalRecord.objects.filter(run_id__in=run_ids)
+        .values("run_id")
+        .annotate(count=Count("id"))
+    }
+    artifact_counts = {
+        item["run_id"]: item["count"]
+        for item in DocumentArtifact.objects.filter(run_id__in=run_ids)
+        .values("run_id")
+        .annotate(count=Count("id"))
+    }
+
+    for run in runs:
+        result_count = result_counts.get(run.id, 0)
+        run.document_count = run.total_pdfs or 0
+        run.patient_count = result_count or run.document_count
+        run.result_count = result_count
+        run.artifact_count = artifact_counts.get(run.id, 0)
+    return runs
 
 
 def recent_runs_partial(request):
     """HTMX fragment for the dashboard recent-run rail."""
     response = render(request, "pipeline/partials/recent_runs.html", {
-        "recent_runs": _recent_runs_queryset(),
+        "recent_runs": _recent_runs_queryset(RECENT_RUN_LIMIT),
     })
     response["Cache-Control"] = "no-store, max-age=0"
     return response
@@ -506,18 +583,17 @@ def patient_detail(request, patient_id):
 
 def run_list(request):
     """List all pipeline runs, most recent first."""
-    runs = PipelineRun.objects.annotate(
-        document_count=Count("documents", distinct=True),
-        patient_count=Count("documents__patient", distinct=True),
-        result_count=Count("finalrecord", distinct=True),
-        artifact_count=Count("artifacts", distinct=True),
-    ).order_by("-created_at")
-    all_doc_ids = list(PDFDocument.objects.values_list("id", flat=True))
+    runs = _recent_runs_queryset(RUN_LIST_LIMIT)
+    all_doc_ids = list(
+        PDFDocument.objects.order_by("-created_at")
+        .values_list("id", flat=True)[:DASHBOARD_DOC_ID_LIMIT]
+    )
+    available_documents_count = PDFDocument.objects.count()
     active_count = PipelineRun.objects.filter(status__in=_ACTIVE_STATUSES).count()
     completed_count = PipelineRun.objects.filter(status=PipelineRun.Status.COMPLETED).count()
     return render(request, "pipeline/run_list.html", {
         "runs": runs,
-        "available_documents_count": len(all_doc_ids),
+        "available_documents_count": available_documents_count,
         "all_doc_ids": all_doc_ids,
         "active_count": active_count,
         "completed_count": completed_count,
@@ -531,19 +607,58 @@ def run_detail(request, run_id):
     """
     run = get_object_or_404(PipelineRun, id=run_id)
     logs = run.logs.all()[:80]
-    documents = list(
-        run.documents.select_related("patient").annotate(
-            page_rows=Count("pages", distinct=True),
-            note_rows=Count("notes", distinct=True),
-            mention_rows=Count("mentions", filter=Q(mentions__run=run), distinct=True),
-            artifact_rows=Count("artifacts", filter=Q(artifacts__run=run), distinct=True),
-        ).order_by("original_filename")
-    )
+    documents = list(run.documents.select_related("patient").order_by("original_filename"))
+    document_ids = [doc.id for doc in documents]
+
+    page_counts = {
+        item["document_id"]: item["count"]
+        for item in PageLedger.objects.filter(document_id__in=document_ids)
+        .values("document_id")
+        .annotate(count=Count("id"))
+    }
+    note_counts = {
+        item["document_id"]: item["count"]
+        for item in NoteLedger.objects.filter(document_id__in=document_ids)
+        .values("document_id")
+        .annotate(count=Count("id"))
+    }
+    mention_counts_by_doc = {
+        item["document_id"]: item["count"]
+        for item in Mention.objects.filter(run=run, document_id__in=document_ids)
+        .values("document_id")
+        .annotate(count=Count("id"))
+    }
+    artifact_counts_by_doc = {
+        item["document_id"]: item["count"]
+        for item in DocumentArtifact.objects.filter(run=run, document_id__in=document_ids)
+        .values("document_id")
+        .annotate(count=Count("id"))
+    }
+
     for doc in documents:
         doc.source_folder = document_source_payload(doc)
+        doc.cohort_key = _cohort_key_for_document(doc)
+        doc.cohort_label = _cohort_label(doc.cohort_key)
+        doc.page_rows = page_counts.get(doc.id, doc.page_count or 0)
+        doc.note_rows = note_counts.get(doc.id, 0)
+        doc.mention_rows = mention_counts_by_doc.get(doc.id, 0)
+        doc.artifact_rows = artifact_counts_by_doc.get(doc.id, 0)
     patients = list(
         Patient.objects.filter(documents__runs=run).distinct().order_by("code")
     )
+    patient_ids = [patient.id for patient in patients]
+    mention_counts_by_patient = {
+        item["patient_id"]: item["count"]
+        for item in Mention.objects.filter(run=run, patient_id__in=patient_ids)
+        .values("patient_id")
+        .annotate(count=Count("id"))
+    }
+    artifact_counts_by_patient = {
+        item["patient_id"]: item["count"]
+        for item in DocumentArtifact.objects.filter(run=run, patient_id__in=patient_ids)
+        .values("patient_id")
+        .annotate(count=Count("id"))
+    }
     final_records = {
         item.patient_id: item
         for item in FinalRecord.objects.filter(patient__in=patients).select_related("patient")
@@ -551,33 +666,61 @@ def run_detail(request, run_id):
     patient_rows = []
     for patient in patients:
         run_docs = [doc for doc in documents if doc.patient_id == patient.id]
-        run_mentions = Mention.objects.filter(patient=patient, run=run).count()
-        run_artifacts = DocumentArtifact.objects.filter(patient=patient, run=run).count()
+        run_mentions = mention_counts_by_patient.get(patient.id, 0)
+        run_artifacts = artifact_counts_by_patient.get(patient.id, 0)
         final_record = final_records.get(patient.id)
+        cohort_key = "other"
+        if run_docs:
+            cohort_counts = {}
+            for doc in run_docs:
+                cohort_counts[doc.cohort_key] = cohort_counts.get(doc.cohort_key, 0) + 1
+            cohort_key = max(cohort_counts.items(), key=lambda item: item[1])[0]
         patient_rows.append({
             "patient": patient,
             "documents": run_docs,
             "source_folder": documents_source_summary(run_docs),
+            "cohort_key": cohort_key,
+            "cohort_label": _cohort_label(cohort_key),
             "mention_count": run_mentions,
             "artifact_count": run_artifacts,
             "final_record": final_record,
             "has_result": bool(final_record),
         })
 
+    cohort_tabs = []
+    for key in ("chemotherapy", "radiation", "other"):
+        cohort_docs = [doc for doc in documents if doc.cohort_key == key]
+        cohort_rows = [row for row in patient_rows if row["cohort_key"] == key]
+        if not cohort_docs and not cohort_rows and key == "other":
+            continue
+        cohort_tabs.append({
+            "key": key,
+            "label": _cohort_label(key),
+            "documents": cohort_docs,
+            "patient_rows": cohort_rows,
+            "document_count": len(cohort_docs),
+            "patient_count": len(cohort_rows),
+            "mention_count": sum(row["mention_count"] for row in cohort_rows),
+            "artifact_count": sum(row["artifact_count"] for row in cohort_rows),
+            "result_count": sum(1 for row in cohort_rows if row["has_result"]),
+        })
+
     totals = {
         "documents": len(documents),
         "patients": len(patients),
-        "mentions": Mention.objects.filter(run=run).count(),
-        "artifacts": DocumentArtifact.objects.filter(run=run).count(),
+        "mentions": sum(mention_counts_by_patient.values()),
+        "artifacts": sum(artifact_counts_by_patient.values()),
         "results": sum(1 for item in patient_rows if item["has_result"]),
         "pages": sum(int(getattr(doc, "page_rows", 0) or doc.page_count or 0) for doc in documents),
         "notes": sum(int(getattr(doc, "note_rows", 0) or 0) for doc in documents),
+        "cohorts": cohort_tabs,
     }
     return render(request, "pipeline/run_detail.html", {
         "run": run,
         "logs": logs,
         "documents": documents,
         "patient_rows": patient_rows,
+        "cohort_tabs": cohort_tabs,
         "totals": totals,
     })
 

@@ -42,10 +42,12 @@ Design decisions
 """
 
 import concurrent.futures
+from collections import defaultdict
+import hashlib
 import logging
 import threading
 import traceback
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from django.db.models import F
 from django.utils import timezone
@@ -72,8 +74,105 @@ from .services.relation_extractor import build_relation_payload
 from .services.validation import validate_final_record
 from .services.artifact_extractor import extract_artifact_mentions
 from .services.source_folders import documents_source_summary
+from .services.spark_agentic_schema import build_spark_agentic_analysis
 
 logger = logging.getLogger("pipeline")
+
+
+def _build_backend_artifact_notes(
+    page_rows: List[Dict[str, Any]],
+    artifacts: List[Dict[str, Any]],
+    existing_notes: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Build one extra LLM note per backend/page before final cleanup."""
+    if not config.LLM_EXTRACT_PER_BACKEND_ARTIFACTS:
+        return []
+
+    seen_hashes = {note.get("hash") for note in existing_notes if note.get("hash")}
+    grouped: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
+
+    def allowed_backend(value: str) -> bool:
+        backend = (value or "").strip().lower()
+        return bool(backend and backend in config.LLM_BACKEND_NOTE_BACKENDS)
+
+    for artifact in artifacts:
+        backend = artifact.get("backend", "")
+        if not allowed_backend(backend):
+            continue
+        text = normalize_text(artifact.get("normalized_text") or artifact.get("text") or "")
+        if len(text) < config.LLM_BACKEND_NOTE_MIN_CHARS:
+            continue
+        grouped[(int(artifact.get("page_num") or 0), backend)].append(artifact)
+
+    for row in page_rows:
+        selected = str(row.get("selected_source") or "native").split(":", 1)[0]
+        backend = "native" if selected.startswith("native") else selected or "native"
+        if not allowed_backend(backend):
+            continue
+        text = normalize_text(row.get("text") or "")
+        if len(text) < config.LLM_BACKEND_NOTE_MIN_CHARS:
+            continue
+        grouped[(int(row.get("page_num") or 0), backend)].append({
+            "id": "",
+            "page_num": int(row.get("page_num") or 0),
+            "backend": backend,
+            "role": "page_text",
+            "artifact_type": "page_text",
+            "reading_order": 0,
+            "text": text,
+            "normalized_text": text,
+            "bbox": [],
+        })
+
+    backend_notes: List[Dict[str, Any]] = []
+    for index, ((page_num, backend), rows) in enumerate(sorted(grouped.items()), start=1):
+        rows = sorted(rows, key=lambda item: (int(item.get("reading_order") or 0), str(item.get("id") or "")))
+        pieces: List[str] = []
+        artifact_ids: List[str] = []
+        roles = set()
+        char_count = 0
+        for item in rows:
+            text = normalize_text(item.get("normalized_text") or item.get("text") or "")
+            if not text:
+                continue
+            role = str(item.get("role") or item.get("artifact_type") or "artifact")
+            roles.add(role)
+            artifact_id = str(item.get("id") or "")
+            if artifact_id:
+                artifact_ids.append(artifact_id)
+            next_piece = f"[{role}] {text}"
+            if char_count + len(next_piece) > config.LLM_BACKEND_NOTE_MAX_CHARS:
+                break
+            pieces.append(next_piece)
+            char_count += len(next_piece)
+
+        text = normalize_text("\n".join(pieces))
+        if len(text) < config.LLM_BACKEND_NOTE_MIN_CHARS:
+            continue
+        digest = hashlib.md5(f"{backend}:{page_num}:{text}".encode("utf-8", errors="ignore")).hexdigest()
+        if digest in seen_hashes:
+            continue
+        seen_hashes.add(digest)
+        backend_notes.append({
+            "page_num": page_num,
+            "note_ix": 1000 + index,
+            "note_id": f"p{page_num:04d}_b{index:03d}",
+            "text": text,
+            "hash": digest,
+            "dates": [],
+            "signal": max(config.MIN_SIGNAL_FOR_LLM, 3),
+            "low_value": False,
+            "regex_mentions": [],
+            "layout_hint": {
+                "source_kind": "backend_artifact",
+                "backend": backend,
+                "artifact_count": len(rows),
+                "roles": sorted(roles),
+            },
+            "artifact_ids": artifact_ids,
+        })
+
+    return backend_notes
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -245,6 +344,9 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
         # ── 1b: Note Segmentation ─────────────────────────────────────────
         # Split each page into clinical-note-sized chunks using layout-aware artifacts.
         notes = segment_layout_aware_notes(page_rows, artifacts)
+        backend_notes = _build_backend_artifact_notes(page_rows, artifacts, notes)
+        if backend_notes:
+            notes.extend(backend_notes)
         result["note_count"] = len(notes)
 
         # ── 1c: Regex Extraction ──────────────────────────────────────────
@@ -355,7 +457,7 @@ def process_single_document(doc: PDFDocument, run: PipelineRun) -> dict:
 
         _log(run, "info", "extraction",
              f"{patient.code}: {len(page_rows)} pages, {len(notes)} grouped notes, "
-             f"{result['unresolved']} queued for LLM-first extraction")
+             f"{len(backend_notes)} backend notes, {result['unresolved']} queued for LLM-first extraction")
 
     except Exception as exc:
         result["status"] = "error"
@@ -543,6 +645,12 @@ def run_merge_phase(run: PipelineRun) -> None:
                 }
                 for page in page_qs.select_related("document").order_by("document__original_filename", "page_num")
             ]
+            artifact_rows = list(
+                DocumentArtifact.objects.filter(patient=patient, run=run).values(
+                    "artifact_type", "role", "backend", "text", "confidence",
+                    "bbox", "page_num", "metadata",
+                )
+            )
 
             final_data = build_final_record(
                 patient_code = patient.code,
@@ -575,6 +683,13 @@ def run_merge_phase(run: PipelineRun) -> None:
                 spell_check=spell_check_payload,
                 source_pages=source_pages,
             )
+            spark_payload = build_spark_agentic_analysis(
+                patient_code=patient.code,
+                source_pdf=source_pdf,
+                mentions=corrected_mentions,
+                artifacts=artifact_rows,
+                page_count=final_data["page_count"],
+            )
             relation_payload = build_relation_payload(corrected_mentions)
             validation_payload = validate_final_record(
                 patient_code=patient.code,
@@ -592,12 +707,15 @@ def run_merge_phase(run: PipelineRun) -> None:
                 "source_folder": source_folder_payload,
                 "validation": validation_payload,
                 "auto_schema": deep_schema.get("quality_checks", {}).get("auto_schema", {}),
+                "spark_agentic_schema": spark_payload.get("verification", {}),
                 "hybrid_schema_cleaner": hybrid_cleaner_payload,
                 "text_corrections_applied": spell_check_payload.get("corrected_mentions", 0),
                 "mentions_after_hybrid_cleaner": len(corrected_mentions),
             }
             deep_schema["source_folder"] = source_folder_payload
+            deep_schema["spark_agentic_analysis"] = spark_payload
             deep_schema.setdefault("quality_checks", {})["hybrid_schema_cleaner"] = hybrid_cleaner_payload
+            deep_schema.setdefault("quality_checks", {})["spark_agentic_schema"] = spark_payload.get("verification", {})
             deep_schema["validation"] = validation_payload
             deep_schema.setdefault("quality_checks", {})["validation"] = validation_payload
             FinalRecord.objects.update_or_create(

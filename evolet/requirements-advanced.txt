@@ -4,6 +4,7 @@
 surya-ocr>=0.8
 paddleocr>=3.0
 ultralytics>=8.3
+sahi>=0.11.36
 python-doctr[torch]>=1.0
 easyocr>=1.7
 opencv-python-headless>=4.10
@@ -13,4 +14,10 @@ medspacy>=1.3
 scispacy>=0.5
 datasets>=3.0
 qwen-vl-utils>=0.0.10
+transformers==5.9.0
 vietocr>=0.3.13
+
+# olmOCR-2 + Chandra OCR: VLM-based full-page OCR (printed + handwriting)
+# Uses Qwen2VLForConditionalGeneration — already available via transformers
+# bitsandbytes enables 4-bit quantization (both models run on L4 simultaneously)
+accelerate>=0.34.0

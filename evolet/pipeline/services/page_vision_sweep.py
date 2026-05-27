@@ -1,9 +1,9 @@
 """Page-level visual OCR sweep for scanned medical forms.
 
-The normal PDF text path can miss handwritten orders because PyMuPDF sees only
-the printed template, while whole-page OCR loses reading order. This module
-renders each page, crops predictable clinical zones, OCRs them independently,
-and returns coordinate-bearing artifacts that are merged beside native text.
+Crop-level OCR with fallback chain per zone:
+  1. Chandra OCR  (datalab-to/chandra-ocr-2 — best open-source crop handwriting)
+  2. Groq Vision  (cloud API, no GPU needed — fast fallback)
+  3. TrOCR / Medical HW  (local small models — final fallback)
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import json
 import logging
 from io import BytesIO
 from statistics import pstdev
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -22,34 +22,49 @@ from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from . import config
 from .json_utils import parse_json_loose
-from .ocr_backends import get_got_ocr_backend, get_medical_handwriting_backend, get_trocr_backend
+from .ocr_backends import get_medical_handwriting_backend, get_trocr_backend
 from .pdf_extractor import normalize_text
 
 logger = logging.getLogger("pipeline")
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-
 Zone = Tuple[str, str, Tuple[float, float, float, float]]
+
+_GROQ_CROP_PROMPT = (
+    "You are a medical OCR model reading a cropped region of an Indian hospital form "
+    "(Tata Memorial Hospital / similar). The image may contain handwritten doctor "
+    "orders, medication prescriptions, vital signs, or patient identifiers.\n\n"
+    "Extract ALL visible text exactly as written. Common Indian abbreviations:\n"
+    "Inj=Injection, Tab=Tablet, BD=twice daily, TDS=3x daily, OD=once daily, "
+    "SOS/PRN=as needed, STAT=immediately, IV=intravenous, IM=intramuscular, "
+    "SC=subcutaneous, N/S=normal saline, RL=Ringer lactate, "
+    "BP=blood pressure, PR=pulse, SpO2=oxygen saturation, RR=resp rate, "
+    "UHID=hospital ID, IPD=inpatient, OPD=outpatient.\n\n"
+    "Return JSON only:\n"
+    '{\"text\": \"<all text>\", \"confidence\": 0.0-1.0, '
+    '\"fields\": [], \"medications\": [], \"vitals\": []}\n\n'
+    "Mark unclear words with [?]. Do NOT invent text."
+)
 
 
 def collect_page_vision_artifacts(pdf_path: str) -> List[Dict[str, Any]]:
     if not config.ENABLE_PAGE_VISION_SWEEP:
         return []
+    return _collect_artifacts_with_fallback_chain(pdf_path)
 
-    if config.ENABLE_GROQ_VISION_OCR:
-        return _collect_groq_vision_artifacts(pdf_path)
 
-    if not (config.ENABLE_HANDWRITING_OCR and config.ENABLE_LOCAL_HF_VISION_MODELS):
-        return []
-
-    artifacts: List[Dict[str, Any]] = []
+def _collect_artifacts_with_fallback_chain(pdf_path: str) -> List[Dict[str, Any]]:
+    """Process each crop with: Chandra → Groq Vision → TrOCR."""
+    chandra_backend = _try_get_chandra()
+    groq_enabled = config.ENABLE_GROQ_VISION_OCR and bool(config.GROQ_API_KEY)
     trocr = get_trocr_backend()
-    got = get_got_ocr_backend()
     medical = get_medical_handwriting_backend()
 
+    artifacts: List[Dict[str, Any]] = []
     doc = fitz.open(pdf_path)
     try:
-        for page_index in range(len(doc)):
+        page_limit = min(len(doc), max(1, config.PAGE_VISION_MAX_PAGES_PER_DOCUMENT))
+        for page_index in range(page_limit):
             page = doc[page_index]
             page_num = page_index + 1
             page_width = float(page.rect.width)
@@ -64,21 +79,26 @@ def collect_page_vision_artifacts(pdf_path: str) -> List[Dict[str, Any]]:
                     if _is_blankish(crop):
                         continue
                     prepared = _prepare_for_handwriting(crop)
-                    primary = trocr.recognize(prepared)
-                    medical_result = (
-                        medical.recognize(prepared)
-                        if config.ENABLE_MEDICAL_HANDWRITING_OCR and config.MEDICAL_HANDWRITING_MODEL_ID
-                        else None
+
+                    text, confidence, backend_used, extra_meta = _read_crop(
+                        prepared,
+                        role=role,
+                        label=label,
+                        page_num=page_num,
+                        chandra=chandra_backend,
+                        groq_enabled=groq_enabled,
+                        trocr=trocr,
+                        medical=medical,
                     )
-                    verifier = got.recognize(prepared) if config.ENABLE_GOT_VERIFICATION else None
-                    text, confidence, candidates = _choose_text(primary, medical_result, verifier)
+
                     text = normalize_text(text)
                     if len(text) < config.PAGE_VISION_MIN_TEXT_CHARS:
                         continue
+
                     artifacts.append({
                         "artifact_type": "handwriting" if role in {"orders", "vitals", "identity"} else "text_block",
                         "role": role,
-                        "backend": "page_vision_sweep",
+                        "backend": backend_used,
                         "text": text,
                         "normalized_text": text,
                         "confidence": confidence,
@@ -91,10 +111,7 @@ def collect_page_vision_artifacts(pdf_path: str) -> List[Dict[str, Any]]:
                             "page_width": page_width,
                             "page_height": page_height,
                             "render_dpi": config.PAGE_VISION_SWEEP_DPI,
-                            "trocr_model_id": config.TROCR_MODEL_ID,
-                            "medical_handwriting_model_id": config.MEDICAL_HANDWRITING_MODEL_ID,
-                            "medocr_reference_dataset": config.MEDOCR_VISION_DATASET_ID,
-                            "candidates": candidates,
+                            **extra_meta,
                         },
                     })
                 except Exception as exc:
@@ -102,85 +119,89 @@ def collect_page_vision_artifacts(pdf_path: str) -> List[Dict[str, Any]]:
     finally:
         doc.close()
 
-    logger.info("Page vision sweep generated %d artifacts for %s", len(artifacts), pdf_path)
-    return artifacts
-
-
-def _collect_groq_vision_artifacts(pdf_path: str) -> List[Dict[str, Any]]:
-    if not config.GROQ_API_KEY:
-        logger.warning("Groq vision OCR enabled but GROQ key is missing")
-        return []
-
-    artifacts: List[Dict[str, Any]] = []
-    doc = fitz.open(pdf_path)
-    try:
-        page_limit = min(len(doc), max(1, config.PAGE_VISION_MAX_PAGES_PER_DOCUMENT))
-        for page_index in range(page_limit):
-            page = doc[page_index]
-            page_num = page_index + 1
-            page_width = float(page.rect.width)
-            page_height = float(page.rect.height)
-            for order, (role, label, rel_box) in enumerate(_zones(), start=1):
-                if order > config.PAGE_VISION_MAX_CROPS_PER_PAGE:
-                    break
-                bbox = _relative_to_page_bbox(rel_box, page_width, page_height)
-                try:
-                    crop = _render_crop(page, bbox)
-                    if _is_blankish(crop):
-                        continue
-                    prepared = _prepare_for_handwriting(crop)
-                    result = _groq_read_image(prepared, role=role, label=label, page_num=page_num)
-                    text = normalize_text(result.get("text", ""))
-                    if len(text) < config.PAGE_VISION_MIN_TEXT_CHARS:
-                        continue
-                    artifacts.append({
-                        "artifact_type": "handwriting" if role in {"orders", "vitals", "identity"} else "text_block",
-                        "role": role,
-                        "backend": "groq_vision",
-                        "text": text,
-                        "normalized_text": text,
-                        "confidence": float(result.get("confidence") or 0.72),
-                        "bbox": bbox,
-                        "polygon": [],
-                        "page_num": page_num,
-                        "reading_order": 5000 + order,
-                        "metadata": {
-                            "zone": label,
-                            "page_width": page_width,
-                            "page_height": page_height,
-                            "render_dpi": config.PAGE_VISION_SWEEP_DPI,
-                            "model": config.GROQ_VISION_MODEL,
-                            "fields": result.get("fields", []),
-                            "medications": result.get("medications", []),
-                            "vitals": result.get("vitals", []),
-                            "python_preprocess": ["pymupdf_render", "pillow_grayscale", "pillow_autocontrast", "pillow_sharpen"],
-                        },
-                    })
-                except Exception as exc:
-                    logger.debug("Groq page vision skipped p%s %s: %s", page_num, label, exc)
-    finally:
-        doc.close()
-
     logger.info("Groq page vision generated %d artifacts for %s", len(artifacts), pdf_path)
     return artifacts
 
 
+def _read_crop(
+    image: Image.Image,
+    *,
+    role: str,
+    label: str,
+    page_num: int,
+    chandra,
+    groq_enabled: bool,
+    trocr,
+    medical,
+) -> Tuple[str, float, str, Dict]:
+    """Try each OCR backend in order, return (text, confidence, backend_name, extra_meta)."""
+
+    # 1. Chandra OCR (best for Indian medical handwriting crops)
+    if chandra is not None:
+        try:
+            result = chandra.recognize(image)
+            if result.text and len(result.text.strip()) >= config.PAGE_VISION_MIN_TEXT_CHARS:
+                return result.text, result.confidence or 0.88, "chandra_ocr", {
+                    "model_id": config.CHANDRA_OCR_MODEL_ID,
+                }
+        except Exception as exc:
+            logger.debug("Chandra crop failed p%s %s: %s", page_num, label, exc)
+
+    # 2. Groq Vision (cloud fallback — good at reading context + handwriting)
+    if groq_enabled:
+        try:
+            result = _groq_read_image(image, role=role, label=label, page_num=page_num)
+            text = normalize_text(result.get("text", ""))
+            if len(text) >= config.PAGE_VISION_MIN_TEXT_CHARS:
+                return text, float(result.get("confidence") or 0.72), "groq_vision", {
+                    "model": config.GROQ_VISION_MODEL,
+                    "fields": result.get("fields", []),
+                    "medications": result.get("medications", []),
+                    "vitals": result.get("vitals", []),
+                }
+        except Exception as exc:
+            logger.debug("Groq crop failed p%s %s: %s", page_num, label, exc)
+
+    # 3. Local fallback: Medical HW → TrOCR
+    primary = trocr.recognize(image)
+    medical_result: Optional[Any] = None
+    if config.ENABLE_MEDICAL_HANDWRITING_OCR and config.MEDICAL_HANDWRITING_MODEL_ID:
+        try:
+            medical_result = medical.recognize(image)
+        except Exception:
+            pass
+
+    text, confidence, _ = _choose_text(primary, medical_result)
+    return text, confidence, "trocr_fallback", {
+        "trocr_model_id": config.TROCR_MODEL_ID,
+        "medical_handwriting_model_id": config.MEDICAL_HANDWRITING_MODEL_ID,
+    }
+
+
+def _try_get_chandra():
+    """Return Chandra backend if enabled and available, else None."""
+    if not config.ENABLE_CHANDRA_OCR:
+        return None
+    try:
+        from .ocr_backends import get_chandra_ocr_backend
+        backend = get_chandra_ocr_backend()
+        if backend.is_available():
+            return backend
+    except Exception as exc:
+        logger.debug("Chandra backend unavailable: %s", exc)
+    return None
+
+
 def _groq_read_image(image: Image.Image, *, role: str, label: str, page_num: int) -> Dict[str, Any]:
-    prompt = (
-        "You are a medical OCR vision model. Read this crop exactly. "
-        "Return JSON only with keys: text, confidence, fields, medications, vitals. "
-        "Preserve handwritten drug names, dosages, vitals, identifiers, dates, and unclear words with [?]. "
-        f"Context: page={page_num}, region_role={role}, region_label={label}."
-    )
     body = {
         "model": config.GROQ_VISION_MODEL,
         "temperature": 0,
-        "max_completion_tokens": 450,
+        "max_completion_tokens": 600,
         "messages": [
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": _GROQ_CROP_PROMPT + f"\n\nContext: page={page_num}, zone={label}, role={role}"},
                     {"type": "image_url", "image_url": {"url": _image_data_url(image)}},
                 ],
             }

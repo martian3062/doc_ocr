@@ -1,278 +1,320 @@
 # doc-ocr
 
-`doc-ocr` is a clinical PDF understanding system for hospital records, scanned reports, chemotherapy sheets, and doctor handwriting. It is designed to produce evidence-linked structured medical data, not just OCR text.
+`doc-ocr` is a Django-based clinical PDF understanding system for scanned
+hospital records, chemotherapy sheets, order charts, and doctor handwriting.
+The goal is not plain OCR text; the goal is evidence-linked structured medical
+data that can be reviewed back against the source PDF.
 
-The current architecture is intentionally layered:
+The active branch and live VM deployment are the **Django-only runtime**. The
+old Next.js frontend is not part of this branch. Django serves the dashboard,
+upload/import screens, runs, patient detail pages, PDF viewer, QC, schema tree,
+and API routes from one containerized app.
 
-1. collect all available text and page evidence
-2. detect layout, tables, page regions, and likely handwritten order zones
-3. crop difficult regions and read them with vision OCR
-4. normalize medical short forms and drug-name variants
-5. build adaptive schema records with evidence, confidence, page, and bounding-box provenance
-6. validate the final medical record
+## Current Live VM
 
-## Current Status
+Verified live target:
 
-### `django_only` Branch
-
-This branch runs the app as one Django service with server-rendered HTML,
-static CSS, and vanilla/HTMX/Alpine JavaScript. The old Next.js frontend is
-removed from this branch, and the Docker image is CPU/cloud-safe:
-
-- Python slim base image, not CUDA
-- no Node/Next build
-- no torch, transformers, bitsandbytes, Paddle, DocTR, or local HF model install
-- Django serves the dashboard, upload, runs, patients, QC, and API routes
-- Groq handles text/schema/vision calls when configured
-- heuristic validation stays on
-- local HF LLM and local HF vision models stay off
-
-Deploy this branch separately from the GPU stack:
-
-```bash
-git switch django_only
-cd evolet
-DOC_READER_DJANGO_PORT=7000 docker compose up -d --build
+```text
+ssh -i D:\data\evolet_rsa pardeep@34.126.112.227
 ```
 
-The live port can be any free port in `7000-7300`.
+Live app:
 
-### Full OCR Branch
+```text
+http://34.126.112.227:7000/
+```
 
-The latest VM deployment uses a safe hybrid stack:
+Current Docker services:
 
-- PyMuPDF/native PDF extraction for embedded text and page rendering
-- optional PaddleOCR PP-Structure parser, capped by page count and GPU memory limits
-- Groq vision OCR for page/crop reading
-- dedicated handwriting order extraction for doctor-written medicine/vital regions
-- medical short-form normalization before schema extraction
-- MedOCR reference layer using `naazimsnh02/medocr-vision-dataset` as prompt/evaluation context
-- Groq text/schema models for adaptive extraction when quota is available, or local Qwen 2.5 7B when Groq quota is blocked
-- heuristic validation by default, with local HF validation disabled unless explicitly enabled
+```text
+doc_reader_django_only_web       Django web app, host 7000 -> container 9000
+doc_reader_django_only_worker    RQ worker
+doc_reader_django_only_postgres  Postgres
+doc_reader_django_only_redis     Redis
+```
 
-Recent verified VM runs:
+Current resource policy:
 
-- `3 PDF handwriting order extractor clean run 2026-05-19`: completed, 97 mentions, extracted handwritten chemo orders including Palonosetron, Paclitaxel 150mg, Trastuzumab 264mg, and Docetaxel 95mg from a page crop.
-- `3 PDF handwriting order extractor final clean run 2026-05-19`: completed extraction, 89 mentions, but Groq text schema cleanup hit the daily token limit during final auto-schema calls.
-- `1 PDF handwriting chart crop extraction-only 2026-05-19`: completed, 43 mentions, chart-page crop detection enabled.
+```text
+GPU: full NVIDIA L4 exposed to web and worker containers with gpus: all
+CPU workers: DOC_READER_MAX_WORKERS fixed at 4
+Document workers: DOC_READER_DOC_WORKERS defaults to 1
+```
 
-Operational note: Groq API keys are runtime secrets. Set them in the VM/container environment; do not commit them.
+Latest VM health check after the GPU fix:
+
+```text
+GPU: NVIDIA L4
+Driver: 580.159.03
+CUDA shown by nvidia-smi: 13.0
+VRAM: 23034 MiB total, 0 MiB used at check time
+Disk: 484G total, 281G used, 204G free, 59%
+RAM: 31Gi total, about 29Gi available after reboot
+Django check: no issues
+Public app: HTTP 200 on port 7000
+Docker GPU: works with --gpus all
+```
+
+The earlier GPU failure was caused by a stale loaded NVIDIA kernel module
+`580.126.09` with userspace/NVML `580.159.03`. A VM reboot aligned the driver
+stack, and both host `nvidia-smi` and Docker GPU checks now work.
+
+## Runtime Shape
+
+This branch is intentionally safe for shared VM use:
+
+- Python/Django runtime, no Node/Next build.
+- Server-rendered templates with HTMX/Alpine-style browser interactions.
+- Postgres + Redis/RQ through Docker Compose.
+- CPU-safe default image.
+- Groq/cloud OCR and schema calls when the API key is configured.
+- Local HF, Paddle, TrOCR, and other heavy GPU paths disabled by default.
+- GPU is available on the VM, but should be enabled only for explicit advanced
+  runs or sidecar experiments.
 
 ## Pipeline
 
 ```text
-PDF/image input
-  -> native PDF text extraction
-  -> page rendering and quality checks
-  -> optional PaddleOCR/PP-Structure layout parsing
-  -> page vision sweep over clinical regions
-  -> handwriting_order_extractor for medicine/vital chart crops
-  -> medical short-form and drug normalization
-  -> artifact and mention extraction
-  -> adaptive schema construction
-  -> validation
-  -> Django review UI and API
+PDF input
+  -> PyMuPDF native text, page geometry, blocks, and image evidence
+  -> page ledger with page text, dimensions, counts, and provenance
+  -> layout/artifact construction with page, bbox, backend, role, and text
+  -> medicine/order crop targeting for handwriting and treatment charts
+  -> optional Groq crop vision for hard visual regions
+  -> deterministic field extraction into Mention rows
+  -> medicine normalization, short-form expansion, and fuzzy cleanup
+  -> deep schema builder with treatment, medication tree, diagnosis, imaging,
+     pathology, timeline, validation, and quality sections
+  -> Django patient review UI with PDF viewer and schema tree
 ```
 
-## Current Django-only OCR Stack
+Regex is only the final auditable mention extractor. The upstream layers decide
+what evidence is available; the downstream schema and validation layers make the
+record reviewable.
 
-The `django_only` branch is not "regex only". Regex/rules are the final
-field-capture layer, but several layers run before and after it so the output
-keeps page evidence and works safely on a VM where GPU is busy.
+## Medication And Terminology Layer
 
-| Layer | Tech stack | Role in the app | Why it exists |
-| --- | --- | --- | --- |
-| PDF reader | PyMuPDF / `fitz` | Opens PDFs, extracts native text, page geometry, blocks, and embedded images. | Fast CPU-safe base layer; avoids GPU OCR when PDFs already contain usable text. |
-| Page ledger | Django ORM + Postgres `PageLedger` | Stores page text, source type, word/char counts, dimensions, and layout metadata. | Makes every later field traceable to a document page. |
-| Page/crop vision | Groq vision model, bounded by page/crop limits | Reads selected page crops such as medicine/order regions. | Handles handwritten or visually structured areas that native PDF text does not capture cleanly. |
-| Handwriting order extractor | Custom PyMuPDF crop targeting + Groq crop reader | Finds order-chart anchors like `Staff Nurse ... medicines and injections`, renders tight crops, and extracts medicine/vital order text. | This is the domain-specific layer for chemotherapy sheets and doctor/nurse order tables. |
-| Layout artifact builder | `layout_segmenter.py` | Converts native blocks, crop OCR, tables, and image regions into structured artifacts with role, backend, bbox, page, and text. | Keeps the pipeline evidence-first instead of flattening everything into one string. |
-| Note segmenter | Custom layout-aware grouping | Groups artifacts into clinical note chunks. | Gives extractors smaller, page-aware units to process. |
-| Deterministic extractor | Regex + medical rules + `artifact_extractor.py` | Creates the main `Mention` rows for diagnosis, medication, dates, vitals, investigations, and other clinical fields. | Cheap, stable, auditable, and safe in the torchless VM image. |
-| Medicine normalizer | Drug dictionary, fuzzy matching, medical short-form rules | Normalizes `Inj`, `IV`, `NS`, `PAN`, `TRASTU`, `DOCET`, dose/route fragments, and common OCR variants. | Turns noisy crop text into clinically useful medication fields. |
-| Text correction | SymSpell + medical whitelist | Fixes common OCR spelling noise after mentions are extracted. | Improves display quality without changing the evidence trail. |
-| Deep schema builder | Python schema builder | Groups flat mentions into diagnosis, medication, imaging, pathology, treatment, timeline, and quality sections. | Powers the patient detail schema cards and schema tree. |
-| Optional auto schema | Groq text model when quota allows | Enriches summaries and adaptive schema fields. | Adds richer narrative/schema context, but deterministic schema remains the fallback when Groq rate limits. |
-| Validation | Heuristic validator by default | Checks missing categories, low mention counts, evidence coverage, and review flags. | Shows whether a record is usable or needs review. |
-| UI/runtime | Django templates, HTMX, Alpine, Redis/RQ, Postgres, Docker Compose | Provides dashboard, upload/import, runs, QC, patient detail, PDF viewer, and live partial refreshes. | Keeps the Django-only build simple, deployable, and review-focused. |
+The current medication subschema builds a `treatment.medication_tree` with
+medicine names, orders, dosage, route, frequency, duration, source pages, and
+evidence quotes.
 
-In the latest VM verification, the CPU/cloud-safe path processed the 10-report
-smoke batch without local `torch`: 10 PDFs, 42 note chunks, 296 mentions, and
-1062 artifacts. The Kaushal report produced 5 notes, 44 mentions, 9 categories,
-and 9 schema sections.
-
-### What Regex Does Versus The Other Layers
-
-Regex/rules are currently the safest final extractor. They create the database
-mentions that become schema fields. The upstream OCR/layout/crop layers decide
-what text is available and where it came from; the downstream schema,
-correction, and validation layers make those mentions reviewable.
-
-That means:
-
-- PyMuPDF and page ledgers provide source text and page provenance.
-- Groq crop vision and the handwriting order extractor improve medicine/order
-  text before regex sees it.
-- Regex creates auditable mentions from that prepared evidence.
-- Normalization, schema building, and validation turn those mentions into the
-  UI result.
-
-Local PaddleOCR, TrOCR, HTR-VT, and other heavy OCR models are intentionally
-not installed in the current django-only image. They should be enabled later in
-a separate local-HF/Paddle sidecar or full OCR image when GPU/CPU headroom is
-available.
-
-Every extracted value should keep source evidence:
-
-- document and page number
-- artifact backend
-- bounding box where available
-- evidence quote
-- confidence
-- normalized value
-- extraction method
-
-## Handwriting Order Layer
-
-Doctor handwriting is handled as a separate crop-level layer, not as normal whole-page OCR.
-
-Main files:
-
-- `evolet/pipeline/services/handwriting_order_extractor.py`
-- `evolet/pipeline/services/medical_short_forms.py`
-- `evolet/pipeline/services/medocr_reference.py`
-- `evolet/pipeline/services/artifact_extractor.py`
-
-What it does:
-
-- takes page/layout artifacts from native text, page vision, and optional Paddle layout
-- detects probable medicine/injection chart pages
-- creates focused crops for vitals, orders, and staff-nurse medicine charts
-- sends each crop to Groq vision with a strict medicine/vitals JSON prompt
-- sends the same crop through a multimodal medicine ensemble when enabled
-- normalizes short forms such as `Inj`, `IV`, `BD`, `TDS`, `STAT`, `NS`, `DNS`, and `RL`
-- normalizes common doctor-writing variants such as `PAN` to pantoprazole, `TRASTU` to trastuzumab, `DOCET` to docetaxel, and `PALONONAIL` to palonosetron
-- stores the result as handwriting artifacts before schema extraction
-
-### Multimodal medicine ensemble
-
-The medicine-name layer combines several readers instead of trusting one OCR output:
-
-- `KeraCare/keras-dots-ocr-finetuned-v1`: crop-level prescription drug-name extraction. This is the primary HF medicine-name reader.
-- `chinmays18/medical-prescription-ocr`: Donut-based handwritten prescription OCR. This is kept as a second visual OCR vote.
-- `Muizzzz8/phi3-prescription-reader`: experimental prescription interpreter over OCR/context text. It is best-effort and may fail gracefully depending on the Transformers/runtime combination.
-- local drug dictionary and fuzzy matching: confirms names, fixes common doctor-writing variants, and preserves nearby dose evidence.
-
-The ensemble output is merged into `order_items` before schema extraction, so downstream records see normalized drug names with dose/evidence metadata.
-
-The MedOCR dataset layer uses:
+Live checks on the VM showed:
 
 ```text
-naazimsnh02/medocr-vision-dataset
+scispacy: installed
+medspacy: installed
+requests: installed
+RxNav API access: working
+local rxnorm package: not installed
+local snomed/umls packages: not installed
 ```
 
-It is a reference/evaluation layer for examples and prompting. It is not treated as a runnable inference model.
+RxNorm/RxNav lookups work from inside the live web container:
 
-## Model And Provider Strategy
+```text
+dexamethasone -> RxCUI 3264
+paclitaxel    -> RxCUI 56946
+carboplatin   -> RxCUI 40048
+ondansetron   -> RxCUI 26225
+```
 
-Default safe VM mode:
+For the active patient record `Anand  Kumar Jain - UHID 32685`, the VM record
+exists and its medication tree contains `dexamethasone`. It does not yet persist
+`coding.rxnorm` or `coding.snomed_ct` fields. The recommended next enrichment is
+to add a lightweight RxNav resolver after medication parsing:
 
-- text/schema provider: Groq
-- vision/crop OCR: Groq vision
-- local HF LLMs: disabled by default
-- local HF vision models: disabled by default
-- validation: heuristic by default
-- PaddleOCR: optional advanced parser, capped
+```json
+{
+  "medicine_name": "dexamethasone",
+  "coding": {
+    "rxnorm": {
+      "rxcui": "3264",
+      "name": "dexamethasone",
+      "tty": "IN",
+      "source": "rxnav",
+      "match_type": "exact"
+    }
+  }
+}
+```
 
-Optional local/HF models remain supported:
+Use RxNorm as the primary medication coding system. Use SNOMED CT later for
+diagnosis, procedure, route, clinical concept, or crosswalk enrichment after the
+medication layer is stable.
 
-- `Qwen/Qwen2.5-7B-Instruct`
-- `Qwen/Qwen2.5-1.5B-Instruct`
-- `google/medgemma-1.5-4b-it`
-- `microsoft/trocr-large-handwritten`
-- `Teklia/pylaia-iam`
-- `espnet/iam_handwriting_ocr`
-- `ismatsamadov/handwriting-recognition-iam`
-- `Riksarkivet/satrn_htr`
-- `Emeritus-21/Finetuned-full-HTR-model`
-- `DungHugging/vietocr-handwritten-finetune`
-- `Valerii02/ukr-htr-convtext`
-- `stepfun-ai/GOT-OCR-2.0-hf`
-- `Armaggheddon/yolo11-document-layout`
+## 2026 Advanced Technique Lane
 
-Use local models only when GPU memory and access are confirmed.
+Branch `20226_tech` now has a GPU-enabled experimental lane for the two latest
+techniques below. The stable extraction path still exists, but the VM image can
+also run CUDA PyTorch, SAHI, Ultralytics, local HF vision/LLM models, and the
+SPARK-style schema verifier.
 
-## Key Environment Variables
+### SAHI-BAR For Prescription Instance Segmentation
 
-```env
-DJANGO_SETTINGS_MODULE=doc_reader.settings
-DATABASE_URL=postgresql://doc_reader:doc_reader@postgres:5432/doc_reader
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_DB=0
+SAHI-BAR is a 2026 prescription instance-segmentation paper: "SAHI-BAR: An
+Instance Segmentation Model for Medical Prescriptions", Engineering,
+Technology & Applied Science Research, Vol. 16 No. 2, April 2026. The method is
+relevant because this project already struggles with small, dense handwritten
+medicine/order regions inside high-resolution prescription and chemotherapy
+chart images.
 
-DOC_READER_GROQ_API_KEY=...
-DOC_READER_LLM_PROVIDER=groq
-DOC_READER_GROQ_EXTRACTION_MODEL=llama-3.3-70b-versatile
-DOC_READER_SCHEMA_PROVIDER=groq
-DOC_READER_SCHEMA_MODEL=llama-3.3-70b-versatile
+Potential fit for `doc-ocr`:
 
-# Local Groq-style text/schema fallback
-DOC_READER_LLM_PROVIDER=local
-DOC_READER_ENABLE_LOCAL_HF_LLM=1
-DOC_READER_MODEL_ID=Qwen/Qwen2.5-7B-Instruct
-DOC_READER_USE_4BIT=0
-DOC_READER_SCHEMA_PROVIDER=local
-DOC_READER_SCHEMA_LOCAL_MODEL_ID=Qwen/Qwen2.5-7B-Instruct
-DOC_READER_SCHEMA_LOCAL_USE_4BIT=0
+- replace or augment the current heuristic order-chart crop router;
+- segment handwritten prescription/order components before OCR;
+- improve line/field isolation for medicine name, dose, route, frequency, and
+  instruction extraction;
+- use slicing-aided inference ideas for small text/object regions without
+  sending the whole page to a heavy model;
+- keep the output as evidence artifacts with page, bbox, backend, and role.
 
-DOC_READER_ENABLE_GROQ_VISION_OCR=1
-DOC_READER_GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
-DOC_READER_ENABLE_PAGE_VISION_SWEEP=1
-DOC_READER_PAGE_VISION_MAX_PAGES_PER_DOCUMENT=5
-DOC_READER_PAGE_VISION_MAX_CROPS_PER_PAGE=4
+Implemented integration:
 
-DOC_READER_ENABLE_HANDWRITING_ORDER_EXTRACTOR=1
-DOC_READER_HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT=5
-DOC_READER_HANDWRITING_ORDER_MAX_CROPS_PER_PAGE=8
-DOC_READER_HANDWRITING_ORDER_RENDER_DPI=220
-DOC_READER_MEDICAL_HANDWRITING_MODEL_ID=espnet/iam_handwriting_ocr
-DOC_READER_MEDICAL_HANDWRITING_CANDIDATE_MODEL_IDS=Teklia/pylaia-iam,espnet/iam_handwriting_ocr,ismatsamadov/handwriting-recognition-iam,Riksarkivet/satrn_htr,Emeritus-21/Finetuned-full-HTR-model,DungHugging/vietocr-handwritten-finetune,Valerii02/ukr-htr-convtext
-DOC_READER_PYLAIA_DECODE_CTC=/tmp/pylaia-venv/bin/pylaia-htr-decode-ctc
-DOC_READER_ESPNET_PYTHON=/tmp/espnet-venv/bin/python
+```text
+pipeline/services/parsing/sahi_prescription_parser.py
+pipeline/services/parsing/ensemble.py
+pipeline/services/layout_segmenter.py
+```
 
-DOC_READER_ENABLE_MULTIMODAL_MEDICINE_EXTRACTOR=1
-DOC_READER_MULTIMODAL_MEDICINE_BACKENDS=keracare,donut,phi3,dictionary
-DOC_READER_KERACARE_MEDICINE_MODEL_ID=KeraCare/keras-dots-ocr-finetuned-v1
-DOC_READER_DONUT_PRESCRIPTION_MODEL_ID=chinmays18/medical-prescription-ocr
-DOC_READER_PHI3_PRESCRIPTION_MODEL_ID=Muizzzz8/phi3-prescription-reader
-DOC_READER_MULTIMODAL_MEDICINE_IMAGE_MAX_SIDE=960
-DOC_READER_MULTIMODAL_MEDICINE_MAX_LOCAL_HF_CROPS_PER_PROCESS=2
+Runtime switches:
 
-DOC_READER_ENABLE_MEDOCR_REFERENCE_LAYER=1
-DOC_READER_MEDOCR_VISION_DATASET_ID=naazimsnh02/medocr-vision-dataset
-
+```text
 DOC_READER_ENABLE_ADVANCED_PARSERS=1
-DOC_READER_PARSER_BACKENDS=paddle_structure
-DOC_READER_PADDLE_STRUCTURE_DEVICE=gpu:0
-DOC_READER_PADDLE_STRUCTURE_GPU_MEMORY_FRACTION=0.55
-DOC_READER_PADDLE_STRUCTURE_GPU_STOP_FRACTION=0.80
-DOC_READER_PADDLE_STRUCTURE_MAX_PAGES_PER_DOCUMENT=5
-DOC_READER_PADDLE_STRUCTURE_CPU_THREADS=1
-
-DOC_READER_ENABLE_LOCAL_HF_LLM=0
-DOC_READER_ENABLE_LOCAL_HF_VISION_MODELS=0
-DOC_READER_VALIDATION_BACKEND=heuristic
-DOC_READER_ENABLE_TRANSFORMER_VALIDATION=0
-DOC_READER_DOC_WORKERS=1
-DOC_READER_MAX_WORKERS=4
+DOC_READER_PARSER_BACKENDS=sahi_prescription,yolo_layout
+DOC_READER_ENABLE_SAHI_PRESCRIPTION_SEGMENTATION=1
+DOC_READER_SAHI_PRESCRIPTION_DEVICE=cuda:0
 ```
 
-Legacy `EVOLET_*` variables are still accepted as compatibility fallbacks through `evolet/pipeline/services/config.py`.
+The adapter uses SAHI sliced inference with a configurable Ultralytics model.
+Public SAHI-BAR prescription weights were not found as a drop-in package, so
+the default model is the configured document-layout detector until
+prescription-specific weights are supplied.
+
+Source: https://www.etasr.com/index.php/ETASR/article/view/16418
+
+### SPARK For Agentic Cancer Pathology Research
+
+SPARK, "System of Pathology Agents for Research and Knowledge", is a 2026
+Nature Medicine framework for agentic AI in cancer pathology. It uses agentic
+modules for idea generation, idea refinement, idea/parameter coding, and
+parameter verification. The Nature Medicine paper describes SPARK as a
+pathology reasoning workflow that operates on H&E whole-slide images, tissue
+segmentation, and single-cell detection outputs to generate interpretable
+biological parameters across cancer cohorts.
+
+Potential fit for `doc-ocr`:
+
+- not a direct OCR replacement;
+- useful as a future research layer over pathology report fields, WSI-derived
+  features, and structured schema outputs;
+- can inspire an agentic "schema hypothesis" or "pathology biomarker concept"
+  layer that proposes, codes, and verifies interpretable features;
+- should consume verified artifacts and schema outputs, not raw OCR text;
+- should remain separated from clinical extraction until validation and review
+  controls are strong.
+
+Implemented integration:
+
+```text
+pipeline/services/spark_agentic_schema.py
+pipeline/orchestrator.py
+```
+
+The deployed implementation runs after merge/auto-schema and stores
+`spark_agentic_analysis` in each `FinalRecord.grouped_record`. It generates
+concepts, codes measurable parameters, and verifies evidence coverage,
+medication completeness, oncology/pathology readiness, and SAHI region yield.
+It does not overwrite deterministic medical fields.
+
+Source: https://www.nature.com/articles/s41591-026-04357-y
+
+Latest 5-PDF full-model VM test:
+
+```text
+run: 20226 tech full GPU SAHI SPARK 5 PDF 2026-05-27
+status: completed
+duration: 763.28 seconds
+PDFs: 5/5
+notes: 15 total, 15 resolved, 0 unresolved
+mentions: 75
+artifact backends:
+  sahi_prescription: 103
+  yolo_layout: 62
+  page_vision_sweep: 44
+  handwriting_ensemble: 125
+  native: 352
+  embedded_image: 23
+SPARK: completed for all 5 final records
+```
+
+## Latest Verified OCR State
+
+The Django-only VM smoke path has already processed:
+
+```text
+10 PDFs
+42 note chunks
+296 mentions
+1062 artifacts
+```
+
+The Kaushal report produced:
+
+```text
+5 notes
+44 mentions
+9 categories
+9 schema sections
+```
+
+The active schema version in the database is:
+
+```text
+4.0-auto-schema
+```
+
+## Deploy On VM
+
+From the repo on the VM:
+
+```bash
+cd ~/TMH-OcR/evolet
+DOC_READER_DJANGO_PORT=7000 docker compose up -d --build
+```
+
+Use a different free port if needed:
+
+```bash
+DOC_READER_DJANGO_PORT=7010 docker compose up -d --build
+```
+
+Check services:
+
+```bash
+sudo -n docker ps --format '{{.Names}} {{.Status}} {{.Ports}}' \
+  | grep doc_reader_django_only
+sudo -n docker stats --no-stream \
+  doc_reader_django_only_web \
+  doc_reader_django_only_worker \
+  doc_reader_django_only_redis \
+  doc_reader_django_only_postgres
+```
+
+Check Django and public app:
+
+```bash
+sudo -n docker exec doc_reader_django_only_web python manage.py check
+curl -I http://127.0.0.1:7000/
+```
+
+Check GPU:
+
+```bash
+nvidia-smi
+sudo -n docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
 
 ## Local Development
-
-Backend:
 
 ```bash
 cd evolet
@@ -281,153 +323,91 @@ python manage.py check
 python manage.py runserver 0.0.0.0:9000
 ```
 
-Frontend:
-
-```bash
-cd evolet/frontend
-npm install
-npm run dev
-```
-
-Production frontend build:
-
-```bash
-cd evolet/frontend
-npm run build
-```
-
-## Docker Deployment
+Docker locally:
 
 ```bash
 cd evolet
-docker compose up -d --build
+DOC_READER_DJANGO_PORT=7000 docker compose up -d --build
 ```
 
-Default services:
+## Important Environment Variables
 
-- frontend: `http://localhost:3000`
-- backend API: `http://localhost:9000/api/v1/dashboard/`
-- Postgres: `doc_reader_postgres`
-- Redis: `doc_reader_redis`
+Safe default profile:
 
-## Live VM
+```env
+DOC_READER_LLM_PROVIDER=groq
+DOC_READER_SCHEMA_PROVIDER=groq
+DOC_READER_GROQ_API_KEY=...
 
-Last deployed target:
+DOC_READER_ENABLE_GROQ_VISION_OCR=1
+DOC_READER_ENABLE_PAGE_VISION_SWEEP=1
+DOC_READER_ENABLE_HANDWRITING_ORDER_EXTRACTOR=1
+
+DOC_READER_ENABLE_LOCAL_HF_LLM=0
+DOC_READER_ENABLE_LOCAL_HF_VISION_MODELS=0
+DOC_READER_ENABLE_ADVANCED_PARSERS=0
+DOC_READER_VALIDATION_BACKEND=heuristic
+DOC_READER_ENABLE_TRANSFORMER_VALIDATION=0
+
+DOC_READER_DOC_WORKERS=1
+DOC_READER_MAX_WORKERS=4
+DOC_READER_MULTIMODAL_MEDICINE_BACKENDS=dictionary
+```
+
+Optional advanced settings, only when GPU/runtime is explicitly verified:
+
+```env
+DOC_READER_ENABLE_ADVANCED_PARSERS=1
+DOC_READER_PARSER_BACKENDS=paddle_structure
+DOC_READER_PADDLE_STRUCTURE_DEVICE=gpu:0
+
+DOC_READER_ENABLE_LOCAL_HF_LLM=1
+DOC_READER_MODEL_ID=Qwen/Qwen2.5-7B-Instruct
+DOC_READER_USE_4BIT=0
+
+DOC_READER_ENABLE_LOCAL_HF_VISION_MODELS=1
+DOC_READER_MULTIMODAL_MEDICINE_BACKENDS=keracare,donut,phi3,dictionary
+```
+
+Legacy `EVOLET_*` variables are still accepted as compatibility fallbacks in
+`evolet/pipeline/services/config.py`.
+
+## Main Files
 
 ```text
-ssh -i D:\data\evolet_rsa pardeep@34.126.112.227
+evolet/docker-compose.yml
+evolet/Dockerfile
+evolet/requirements-django-only.txt
+evolet/doc_reader/settings.py
+evolet/pipeline/orchestrator.py
+evolet/pipeline/models.py
+evolet/pipeline/views.py
+evolet/pipeline/api_views.py
+evolet/pipeline/services/layout_segmenter.py
+evolet/pipeline/services/page_vision_sweep.py
+evolet/pipeline/services/handwriting_order_extractor.py
+evolet/pipeline/services/artifact_extractor.py
+evolet/pipeline/services/schema_cleaner.py
+evolet/pipeline/services/schema_builder.py
+evolet/pipeline/services/auto_schema.py
+evolet/pipeline/services/validation.py
+evolet/templates/
+evolet/static/
 ```
-
-Live URLs:
-
-- frontend: `http://34.126.112.227:3000`
-- backend dashboard API: `http://34.126.112.227:9000/api/v1/dashboard/`
-- runs page: `http://34.126.112.227:3000/runs`
-
-The VM has an NVIDIA L4 GPU. Keep GPU-heavy paths capped:
-
-- one document worker for GPU parser/vision runs
-- max four general workers
-- Paddle GPU memory fraction below 0.8
-- page and crop caps on all vision routes
-
-## Useful Commands
-
-Run a bounded handwriting extraction test:
-
-```bash
-cd evolet
-docker compose exec -T \
-  -e DOC_READER_SKIP_EXISTING=0 \
-  -e DOC_READER_ENABLE_HANDWRITING_ORDER_EXTRACTOR=1 \
-  -e DOC_READER_ENABLE_MEDOCR_REFERENCE_LAYER=1 \
-  -e DOC_READER_ENABLE_GROQ_VISION_OCR=1 \
-  -e DOC_READER_ENABLE_AUTO_SCHEMA=0 \
-  backend python manage.py run_pipeline \
-  --limit 1 \
-  --no-4bit \
-  --name "1 PDF handwriting extraction smoke"
-```
-
-Run a capped 3-PDF validation:
-
-```bash
-cd evolet
-docker compose exec -T \
-  -e DOC_READER_SKIP_EXISTING=0 \
-  -e DOC_READER_DOC_WORKERS=1 \
-  -e DOC_READER_MAX_WORKERS=4 \
-  -e DOC_READER_HANDWRITING_ORDER_MAX_PAGES_PER_DOCUMENT=5 \
-  -e DOC_READER_HANDWRITING_ORDER_MAX_CROPS_PER_PAGE=8 \
-  backend python manage.py run_pipeline \
-  --limit 3 \
-  --no-4bit \
-  --name "3 PDF handwriting validation"
-```
-
-Compare native handwriting recognizers on ten crop zones:
-
-```bash
-cd evolet
-docker compose exec -T backend python manage.py eval_handwriting_models \
-  --limit-crops 10 \
-  --model Teklia/pylaia-iam \
-  --model espnet/iam_handwriting_ocr \
-  --model ismatsamadov/handwriting-recognition-iam
-```
-
-`Teklia/pylaia-iam` and `espnet/iam_handwriting_ocr` should run from isolated venvs, not the main Django environment:
-
-```bash
-docker compose exec -T backend sh -lc '
-apt-get update &&
-apt-get install -y --no-install-recommends git build-essential python3.10-venv &&
-python -m venv /tmp/pylaia-venv &&
-/tmp/pylaia-venv/bin/pip install --no-cache-dir pylaia==1.1.2 &&
-python -m venv /tmp/espnet-venv &&
-/tmp/espnet-venv/bin/pip install --no-cache-dir wheel pillow &&
-/tmp/espnet-venv/bin/pip install --no-cache-dir espnet==202209 espnet_model_zoo==0.1.7 typeguard==2.13.3
-'
-```
-
-Check backend health:
-
-```bash
-cd evolet
-docker compose exec -T backend python manage.py check
-docker stats --no-stream doc_reader_backend doc_reader_worker
-nvidia-smi
-```
-
-## Important Backend Files
-
-- `evolet/pipeline/orchestrator.py`
-- `evolet/pipeline/services/layout_segmenter.py`
-- `evolet/pipeline/services/page_vision_sweep.py`
-- `evolet/pipeline/services/handwriting_order_extractor.py`
-- `evolet/pipeline/services/multimodal_medicine_extractor.py`
-- `evolet/pipeline/services/artifact_extractor.py`
-- `evolet/pipeline/services/medical_short_forms.py`
-- `evolet/pipeline/services/medocr_reference.py`
-- `evolet/pipeline/services/parsing/paddle_parser.py`
-- `evolet/pipeline/services/auto_schema.py`
-- `evolet/pipeline/services/validation.py`
-- `evolet/pipeline/api_views.py`
 
 ## Known Limits
 
-- Doctor handwriting is still probabilistic. The best current path is crop selection plus Groq vision plus KeraCare/Donut/Phi3/dictionary medicine-name reconciliation.
-- `KeraCare/keras-dots-ocr-finetuned-v1` requires `transformers==4.51.3`, `qwen-vl-utils`, `trust_remote_code`, and GPU memory headroom.
-- Local HF vision calls are capped by `DOC_READER_MULTIMODAL_MEDICINE_MAX_LOCAL_HF_CROPS_PER_PROCESS` so real multi-page PDFs cannot restart the backend; Groq/context/dictionary reconciliation still runs on every crop.
-- `Muizzzz8/phi3-prescription-reader` is wired as a best-effort interpreter; it may fail gracefully in some runtime combinations.
-- PaddleOCR PP-Structure may return zero artifacts for some PDFs; the pipeline still falls back to native text, page vision, and chart-region crops.
-- Groq quota can block final schema cleanup even when extraction has completed. The extracted artifacts and mentions are still saved.
-- The Paddle GPU packages were live-installed on the VM after rebuild during testing. For permanent deployment, bake the chosen Paddle GPU version into the Docker image.
-- `pkg_resources` emits a deprecation warning from SymSpell, but the dictionary loads and correction runs with `setuptools<81`.
+- Doctor handwriting remains probabilistic. The best current path is tight crop
+  targeting, Groq vision, dictionary medicine normalization, and schema review.
+- Local HF/Paddle/TrOCR-style models are not part of the default Docker image.
+  Add them as a sidecar or advanced image when GPU use is intentional.
+- Groq quota can block optional auto-schema enrichment. Deterministic mentions,
+  artifacts, and schema records still persist.
+- RxNorm coding is verified as possible through RxNav but is not yet persisted
+  in saved medication tree records.
+- SNOMED/UMLS local packages are not installed in the live container.
 
 ## Repository
-
-GitHub:
 
 ```text
 https://github.com/martian3062/doc_ocr.git

@@ -19,6 +19,22 @@ from .services.gpu_utils import gpu_info, system_info
 from .services import config
 from .services.source_folders import document_source_payload
 
+
+def _positive_int(request, name, default, maximum):
+    try:
+        value = int(request.GET.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(1, min(value, maximum))
+
+
+def _offset_int(request):
+    try:
+        return max(int(request.GET.get("offset", 0) or 0), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _serialize_patient(p):
     return {
         "id": str(p.id) if hasattr(p, 'id') else p.pk,
@@ -112,7 +128,11 @@ def api_dashboard(request):
     ).first()
     
     # Category Distribution
-    categories = Mention.objects.values('category').annotate(count=Count('id')).order_by('-count')
+    categories = (
+        Mention.objects.values("category")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:20]
+    )
     
     data = {
         "stats": {
@@ -165,6 +185,8 @@ def api_patient_list(request):
     q = request.GET.get("q", "").strip()
     run_id = request.GET.get("run", "").strip()
     has_results = request.GET.get("has_results", "").strip().lower() in {"1", "true", "yes"}
+    limit = _positive_int(request, "limit", 100, 500)
+    offset = _offset_int(request)
     patients = Patient.objects.annotate(
         mention_count=Count("mentions"),
         doc_count=Count("documents"),
@@ -176,10 +198,9 @@ def api_patient_list(request):
     if q:
         patients = patients.filter(Q(code__icontains=q) | Q(display_name__icontains=q))
     
-    data = {
-        "patients": [_serialize_patient(p) for p in patients.order_by("code")],
-        "total": patients.count(),
-    }
+    total = patients.count()
+    rows = patients.order_by("code")[offset: offset + limit]
+    data = {"patients": [_serialize_patient(p) for p in rows], "total": total}
     return JsonResponse(data)
 
 def api_patient_detail(request, patient_id):
@@ -252,6 +273,8 @@ def api_document_list(request):
     """List source documents with patient context."""
     q = request.GET.get("q", "").strip()
     run_id = request.GET.get("run", "").strip()
+    limit = _positive_int(request, "limit", 100, 500)
+    offset = _offset_int(request)
     documents = PDFDocument.objects.select_related("patient").all().order_by("-created_at")
 
     if run_id:
@@ -263,10 +286,9 @@ def api_document_list(request):
             | Q(patient__display_name__icontains=q)
         )
 
-    data = {
-        "documents": [_serialize_document(doc) for doc in documents],
-        "total": documents.count(),
-    }
+    total = documents.count()
+    rows = documents[offset: offset + limit]
+    data = {"documents": [_serialize_document(doc) for doc in rows], "total": total}
     return JsonResponse(data)
 
 
@@ -289,8 +311,14 @@ def api_document_pdf(request, doc_id):
 
 def api_run_list(request):
     """Full history of pipeline runs."""
+    limit = _positive_int(request, "limit", 50, 200)
+    offset = _offset_int(request)
     runs = PipelineRun.objects.all().order_by("-created_at")
-    return JsonResponse({"runs": [_serialize_run(r) for r in runs]})
+    total = runs.count()
+    return JsonResponse({
+        "runs": [_serialize_run(r) for r in runs[offset: offset + limit]],
+        "total": total,
+    })
 
 def api_run_detail(request, run_id):
     """Run progress, configuration, and recent logs."""

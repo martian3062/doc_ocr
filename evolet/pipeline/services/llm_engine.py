@@ -230,9 +230,19 @@ def _build_prompt(note: Dict[str, Any]) -> str:
     (helps the model avoid duplicating well-covered information).
     """
     note_text = _trim_note_text(note["text"])
+    layout_hint = note.get("layout_hint") if isinstance(note.get("layout_hint"), dict) else {}
+    source_context = ""
+    if layout_hint:
+        source_context = (
+            f"source_kind={layout_hint.get('source_kind', 'merged_note')}\n"
+            f"source_backend={layout_hint.get('backend', '')}\n"
+            f"source_roles={layout_hint.get('roles', [])}\n"
+            f"source_artifact_count={layout_hint.get('artifact_count', '')}\n"
+        )
     return (
         f"note_id={note['note_id']}\n"
         f"page_num={note['page_num']}\n"
+        f"{source_context}"
         f"regex_mentions_already_found={len(note.get('regex_mentions', []))}\n\n"
         "Extract all meaningful structured content from this note in depth and return JSON only. "
         "Do not summarize only the highlights; preserve every identifiable field, table row, "
@@ -571,6 +581,16 @@ def _clean_llm_mention(
     if not date_text:
         dates = extract_dates(note["text"])
         date_text = dates[0] if dates else ""
+    attributes = raw.get("attributes", {}) if isinstance(raw.get("attributes"), dict) else {}
+    layout_hint = note.get("layout_hint") if isinstance(note.get("layout_hint"), dict) else {}
+    if layout_hint:
+        attributes = {
+            **attributes,
+            "source_kind": layout_hint.get("source_kind", "merged_note"),
+            "source_backend": layout_hint.get("backend", ""),
+            "source_roles": layout_hint.get("roles", []),
+            "source_artifact_count": layout_hint.get("artifact_count", ""),
+        }
 
     return {
         "category":         category,
@@ -579,7 +599,7 @@ def _clean_llm_mention(
         "normalized_value": normalize_text(raw.get("normalized_value", "")) or value or label,
         "date_text":        date_text,
         "certainty":        certainty,
-        "attributes":       raw.get("attributes", {}) if isinstance(raw.get("attributes"), dict) else {},
+        "attributes":       attributes,
         "source_pages":     [note["page_num"]],
         "evidence_ids":     [note["note_id"]],
         "evidence_quote":   normalize_text(raw.get("evidence_quote", ""))[:240],

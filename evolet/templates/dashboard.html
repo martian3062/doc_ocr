@@ -11,8 +11,8 @@
             </div>
             <h1 class="font-outfit text-4xl font-black tracking-tight text-sky-950">doc-ocr</h1>
             <p class="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
-                Django-only review surface for OCR, handwriting crops, Groq schema extraction,
-                medical validation, and exact source provenance.
+                Django-only review surface for OCR, handwriting crops, olmOCR-2 + Chandra full-page VLM,
+                Mistral OCR 3, Groq schema extraction, medical validation, and exact source provenance.
             </p>
         </div>
         <div class="relative z-10 mt-5 flex gap-3 lg:mt-0">
@@ -48,12 +48,13 @@
             </div>
             <div class="grid gap-3 md:grid-cols-2">
                 {% set items = [
-                    ('Django UI', 'Templates + static HTML/CSS/JS', true),
-                    ('Parser layer', 'PyMuPDF native text, optional page crops', true),
-                    ('Groq vision', 'Header + vitals + handwriting crops', true),
+                    ('olmOCR-2', 'allenai/olmOCR-2-7B-1025 — full-page printed + handwriting VLM', true),
+                    ('Chandra OCR', 'datalab-to/chandra-ocr-2 — crop-level handwriting (Qwen3-VL 9B)', true),
+                    ('Mistral OCR 3', 'mistral-ocr-latest API — handwriting order extractor', true),
+                    ('SAHI + YOLO layout', 'Prescription segmentation + visual layout detection', true),
+                    ('Groq vision', 'Llama-4 Scout page sweep + schema extraction', true),
                     ('Medicine normalizer', 'Dictionary and short-form expansion', true),
-                    ('Local HF models', 'Disabled in django_only runtime', false),
-                    ('Validation', 'Heuristic required, transformer off', true)
+                    ('Validation', 'Heuristic + medical term validation', true)
                 ] %}
                 {% for title, value, active in items %}
                 <div class="schema-card p-4">
@@ -75,7 +76,11 @@
             <div class="space-y-4">
                 <div>
                     <div class="text-sm font-semibold text-slate-400">Mode</div>
-                    <div class="mt-1 font-bold text-white">CPU + Groq cloud safe</div>
+                    <div class="mt-1 font-bold text-white">L4 GPU + Groq + Mistral OCR</div>
+                </div>
+                <div>
+                    <div class="text-sm font-semibold text-slate-400">VLM backends</div>
+                    <div class="mt-1 text-xs font-bold text-emerald-300">olmOCR-2 · Chandra · Mistral OCR 3</div>
                 </div>
                 <div>
                     <div class="mb-2 flex justify-between text-sm">
