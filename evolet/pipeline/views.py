@@ -62,7 +62,7 @@ DASHBOARD_DOC_ID_LIMIT = 200
 
 COHORT_LABELS = {
     "chemotherapy": "Chemotherapy",
-    "radiation": "Radiation",
+    "radiation": "Radiotherapy",
     "other": "Other",
 }
 

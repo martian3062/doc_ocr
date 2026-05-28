@@ -104,7 +104,7 @@
         {% endif %}
     </section>
 
-    <section class="panel-dark overflow-hidden rounded-xl" x-data="{ tab: 'chemotherapy' }">
+    <section class="panel-dark overflow-hidden rounded-xl" x-data="{ tab: '{{ cohort_tabs[0].key if cohort_tabs else 'chemotherapy' }}' }">
         <div class="border-b border-slate-800/70 p-5">
             <h2 class="font-outfit text-2xl font-black text-white">Source Files In This Run</h2>
             <p class="mt-1 text-sm font-bold text-slate-500">These are the actual PDFs attached to this run, split by treatment source.</p>
@@ -162,10 +162,10 @@
         </div>
     </section>
 
-    <section class="panel-dark overflow-hidden rounded-xl" x-data="{ tab: 'chemotherapy' }">
+    <section class="panel-dark overflow-hidden rounded-xl" x-data="{ tab: '{{ cohort_tabs[0].key if cohort_tabs else 'chemotherapy' }}' }">
         <div class="border-b border-slate-800/70 p-5">
             <h2 class="font-outfit text-2xl font-black text-white">Extracted Results</h2>
-            <p class="mt-1 text-sm font-bold text-slate-500">Patient-level records produced for the files in this run, separated into Chemo and Radiation.</p>
+            <p class="mt-1 text-sm font-bold text-slate-500">Patient-level records produced for the files in this run, separated into Chemo and Radiotherapy.</p>
             <div class="mt-4 flex flex-wrap gap-2">
                 {% for cohort in cohort_tabs %}
                 <button type="button"
